@@ -1,146 +1,184 @@
 ﻿using FaceONNX;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Linq;
-using System.Reflection;
+using System.Numerics;
 using System.Runtime.InteropServices;
-using System.Xml.Linq;
+using System.Threading.Tasks;
 using UMapx.Visualization;
 
 namespace Face_Matcher_UI
 {
     class FaceMatcher
     {
-        public double MatchThreshold { get; set; } = 0.8;
-        public void Run(string SuspectDir,string ImageDir,string ResultDir, Action<string> logCallback)
+        public double MatchThreshold { get; set; } = 0.7;
+
+        public void Run(string suspectDir, string imageDir, string resultDir, Action<string> logCallback)
         {
-            logCallback?.Invoke("FaceONNX: Multi-Suspect Augmented Face Matching");
-
-            //string suspectDir = @"..\..\..\suspect";
-            //string imageDir = @"..\..\..\images";
-            //string resultDir = @"..\..\..\results";
-
-            string suspectDir = SuspectDir;
-            string imageDir = ImageDir;
-            string resultDir = ResultDir;
+            var stopwatch = Stopwatch.StartNew(); // Start timing
+            logCallback?.Invoke("FaceONNX: Optimized Multi-Suspect Augmented Face Matching");
             Directory.CreateDirectory(resultDir);
 
             using var faceDetector = new FaceDetector();
             using var faceEmbedder = new FaceEmbedder();
 
-            // Step 1: Load all suspect embeddings with augmentations
-            var suspectEmbeddings = new Dictionary<string, float[]>();
-            var suspectFiles = Directory.GetFiles(suspectDir, "*.*", SearchOption.TopDirectoryOnly);
+            var suspectEmbeddings = new ConcurrentDictionary<string, float[]>();
+            var suspectFiles = Directory.GetFiles(suspectDir);
 
-            foreach (var suspectFile in suspectFiles)
+            // Parallel loading of suspect images
+            Parallel.ForEach(suspectFiles, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, suspectFile =>
             {
-                using var suspectImage = new Bitmap(suspectFile);
-                var faces = faceDetector.Forward(suspectImage);
-                if (faces.Length == 0)
+                try
                 {
-                    logCallback?.Invoke($"No face found in suspect image: {suspectFile}");
-                    continue;
-                }
-
-                var face = faces[0]; // assuming one face per suspect
-                using var cropped = CropFace(suspectImage, face.Box);
-                var augmentations = GenerateAugmentations(cropped);
-
-                var embeddings = new List<float[]>();
-                foreach (var img in augmentations)
-                {
-                    using (img)
+                    using var suspectImage = LoadBitmapUnlocked(suspectFile);
+                    var faces = faceDetector.Forward(suspectImage);
+                    if (faces.Length == 0)
                     {
-                        var emb = faceEmbedder.Forward(img);
-                        embeddings.Add(emb);
+                        logCallback?.Invoke($"No face found in suspect image: {suspectFile}");
+                        return;
                     }
+
+                    using var cropped = CropFace(suspectImage, faces[0].Box);
+                    var augmentations = GenerateAugmentations(cropped);
+                    var embeddings = new List<float[]>();
+
+                    foreach (var img in augmentations)
+                    {
+                        using (img)
+                        {
+                            embeddings.Add(faceEmbedder.Forward(img));
+                        }
+                    }
+
+                    suspectEmbeddings[Path.GetFileNameWithoutExtension(suspectFile)] = AverageEmbedding(embeddings);
+                    logCallback?.Invoke($"Loaded suspect: {Path.GetFileNameWithoutExtension(suspectFile)} with {embeddings.Count} embeddings");
                 }
-
-                var averagedEmbedding = AverageEmbedding(embeddings);
-                var name = Path.GetFileNameWithoutExtension(suspectFile);
-                suspectEmbeddings[name] = averagedEmbedding;
-
-                logCallback?.Invoke($"Loaded suspect: {name} with {embeddings.Count} augmented embeddings");
-            }
-
-            // Step 2: Process input group images
-            var groupImages = Directory.GetFiles(imageDir, "*.*", SearchOption.TopDirectoryOnly);
-
-            using var painter = new Painter()
-            {
-                BoxPen = new Pen(Color.Yellow, 4),
-                Transparency = 0
-            };
-
-            foreach (var imageFile in groupImages)
-            {
-                // Wrap all bitmap work in a dedicated scope so it's disposed before deletion
-                using (var bitmap = new Bitmap(imageFile))
-                using (var graphics = Graphics.FromImage(bitmap))
+                catch (Exception ex)
                 {
+                    logCallback?.Invoke($"Error loading suspect {suspectFile}: {ex.Message}");
+                }
+            });
+
+            var groupImages = Directory.GetFiles(imageDir);
+            using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 4), Transparency = 0 };
+
+            Parallel.ForEach(groupImages, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, imageFile =>
+            {
+                var sw = Stopwatch.StartNew();
+
+                try
+                {
+                    using var bitmap = LoadBitmapUnlocked(imageFile);
+                    using var graphics = Graphics.FromImage(bitmap);
+
+                    // Optionally: use thread-local faceDetector/faceEmbedder if not thread-safe
                     var groupFaces = faceDetector.Forward(bitmap);
+                    bool matchedAny = false;
 
                     foreach (var face in groupFaces)
                     {
                         using var crop = CropFace(bitmap, face.Box);
-                        
                         var queryAugmentations = GenerateAugmentations(crop);
 
-                        var queryEmbeddings = queryAugmentations.Select(img =>
+                        // Faster parallel embedding generation
+                        var queryEmbeddings = queryAugmentations.AsParallel().Select(img =>
                         {
-                            var emb = faceEmbedder.Forward(img);
-                            img.Dispose(); // free up memory
-                            return emb;
+                            using (img) return faceEmbedder.Forward(img);
                         }).ToList();
 
-                        var averagedQueryEmbedding = AverageEmbedding(queryEmbeddings);
+                        var averagedQuery = AverageEmbedding(queryEmbeddings);
 
-                        string matchedName = "Unknown";
-                        double bestDistance = double.MaxValue;
+                        string bestMatch = "Unknown";
+                        double bestDist = double.MaxValue;
 
                         foreach (var (name, embedding) in suspectEmbeddings)
                         {
-                            double distance = CosineDistance(averagedQueryEmbedding, embedding);
-                            if (distance < bestDistance)
+                            double dist = CosineDistanceSIMD(averagedQuery, embedding);
+                            if (dist < bestDist)
                             {
-                                bestDistance = distance;
-                                matchedName = name;
+                                bestDist = dist;
+                                bestMatch = name;
                             }
                         }
 
-                        if (bestDistance < MatchThreshold)
+                        if (bestDist < MatchThreshold)
                         {
-                            var paintData = new PaintData()
-                            {
-                                Rectangle = face.Box,
-                                Title = matchedName
-                            };
-                            painter.Draw(graphics, paintData);
-
-                            logCallback?.Invoke($"Matched suspect: {matchedName} with distance {bestDistance}");
-
-                            var outputFile = Path.Combine(resultDir, Path.GetFileName(imageFile));
-                            bitmap.Save(outputFile);
-                            logCallback?.Invoke($"Processed {Path.GetFileName(imageFile)}");
+                            painter.Draw(graphics, new PaintData { Rectangle = face.Box, Title = bestMatch });
+                            logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
+                            matchedAny = true;
                         }
-
                     }
-                }
 
-                // All using blocks have completed here; file should now be unlocked
-                try
-                {
-                   // File.Delete(imageFile);                  
+                    if (matchedAny)
+                    {
+                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+                    }
+                    else
+                    {
+                        logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+                    }
+
+                    File.Delete(imageFile);
                     logCallback?.Invoke($"Deleted input image: {Path.GetFileName(imageFile)}");
                 }
                 catch (Exception ex)
                 {
-                    logCallback?.Invoke($"Failed to delete image: {imageFile}. Error: {ex.Message}");
+                    logCallback?.Invoke($"Error processing image {imageFile}: {ex.Message}");
                 }
-            }
+
+                sw.Stop();
+                logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+            });
+            stopwatch.Stop();
             logCallback?.Invoke("Face matching complete.");
+            logCallback?.Invoke($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
+        }
+        private static Bitmap LoadBitmapUnlocked(string path)
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var ms = new MemoryStream();
+            fs.CopyTo(ms);
+            ms.Position = 0;
+            return new Bitmap(ms);
+        }
+        public static double CosineDistanceSIMD(float[] a, float[] b)
+        {
+            if (a.Length != b.Length)
+                throw new ArgumentException("Embeddings must be the same length");
+
+            var dot = 0f;
+            var normA = 0f;
+            var normB = 0f;
+
+            int i = 0;
+            int simdLength = Vector<float>.Count;
+
+            while (i + simdLength <= a.Length)
+            {
+                var va = new Vector<float>(a, i);
+                var vb = new Vector<float>(b, i);
+
+                dot += Vector.Dot(va, vb);
+                normA += Vector.Dot(va, va);
+                normB += Vector.Dot(vb, vb);
+
+                i += simdLength;
+            }
+
+            // tail processing
+            for (; i < a.Length; i++)
+            {
+                dot += a[i] * b[i];
+                normA += a[i] * a[i];
+                normB += b[i] * b[i];
+            }
+
+            return 1.0 - (dot / (Math.Sqrt(normA) * Math.Sqrt(normB) + 1e-10));
         }
 
         private static Bitmap CropFace(Bitmap image, Rectangle box)
@@ -151,52 +189,38 @@ namespace Face_Matcher_UI
 
         private static double CosineDistance(float[] v1, float[] v2)
         {
-            double dot = 0.0, normA = 0.0, normB = 0.0;
+            double dot = 0, normA = 0, normB = 0;
             for (int i = 0; i < v1.Length; i++)
             {
                 dot += v1[i] * v2[i];
-                normA += Math.Pow(v1[i], 2);
-                normB += Math.Pow(v2[i], 2);
+                normA += v1[i] * v1[i];
+                normB += v2[i] * v2[i];
             }
             return 1.0 - (dot / (Math.Sqrt(normA) * Math.Sqrt(normB)));
         }
 
         private static List<Bitmap> GenerateAugmentations(Bitmap original)
         {
-            List<Bitmap> variants = new List<Bitmap>
+            try
             {
-                new Bitmap(original), // Original
-                ToGrayscale(original), // Grayscale
-                ApplyGaussianBlur(original), // Blurred
-                new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
-                FlipHorizontal(original)                                // Horizontally Flipped
-        //        AdjustBrightness(original, 1.2f),
-        //AdjustBrightness(original, 0.8f),
-        //AdjustContrast(original, 1.2f),
-        //AdjustContrast(original, 0.8f),
-        //RotateImage(original, 5),
-        //RotateImage(original, -5)
-            };
-            return variants;
-        }
-        private static List<Bitmap> GenerateAugmentations_cctv(Bitmap original)
-        {
-            List<Bitmap> variants = new List<Bitmap>
-    {
-        new Bitmap(original), // Original
-        AdjustBrightness(original, 1.2f),
-        AdjustBrightness(original, 0.8f),
-        AdjustContrast(original, 1.2f),
-        AdjustContrast(original, 0.8f),
-        RotateImage(original, 5),
-        RotateImage(original, -5)
-    };
-            return variants;
+                return new List<Bitmap>
+                {
+                    new Bitmap(original), // Original
+                    ToGrayscale(original), // Grayscale
+                    //ApplyGaussianBlur(original), // Blurred
+                   // new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
+                   // FlipHorizontal(original) // Flip
+                };
+            }
+            catch
+            {
+                return new List<Bitmap> { new Bitmap(original) };
+            }
         }
 
         private static Bitmap FlipHorizontal(Bitmap image)
         {
-            Bitmap flipped = new Bitmap(image);
+            var flipped = new Bitmap(image);
             flipped.RotateFlip(RotateFlipType.RotateNoneFlipX);
             return flipped;
         }
@@ -216,15 +240,13 @@ namespace Face_Matcher_UI
                 });
                 var attributes = new System.Drawing.Imaging.ImageAttributes();
                 attributes.SetColorMatrix(colorMatrix);
-                g.DrawImage(original, new Rectangle(0, 0, original.Width, original.Height),
-                    0, 0, original.Width, original.Height, GraphicsUnit.Pixel, attributes);
+                g.DrawImage(original, new Rectangle(0, 0, original.Width, original.Height), 0, 0, original.Width, original.Height, GraphicsUnit.Pixel, attributes);
             }
             return gray;
         }
 
         private static Bitmap ApplyGaussianBlur(Bitmap image)
         {
-            // Simulate Gaussian blur by downscaling and upscaling
             var small = new Bitmap(image, new Size(image.Width / 2, image.Height / 2));
             var blurred = new Bitmap(small, image.Size);
             small.Dispose();
@@ -240,15 +262,28 @@ namespace Face_Matcher_UI
             float[] avg = new float[length];
 
             foreach (var emb in embeddings)
-            {
                 for (int i = 0; i < length; i++)
                     avg[i] += emb[i];
-            }
 
             for (int i = 0; i < length; i++)
                 avg[i] /= embeddings.Count;
 
             return avg;
+        }
+
+private static List<Bitmap> GenerateAugmentations_cctv(Bitmap original)
+        {
+            List<Bitmap> variants = new List<Bitmap>
+    {
+        new Bitmap(original), // Original
+        AdjustBrightness(original, 1.2f),
+        AdjustBrightness(original, 0.8f),
+        AdjustContrast(original, 1.2f),
+        AdjustContrast(original, 0.8f),
+        RotateImage(original, 5),
+        RotateImage(original, -5)
+    };
+            return variants;
         }
         private static Bitmap AdjustBrightness(Bitmap image, float factor)
         {
