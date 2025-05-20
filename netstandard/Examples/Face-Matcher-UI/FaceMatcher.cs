@@ -5,6 +5,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Xml.Linq;
 using UMapx.Visualization;
 
@@ -12,6 +13,7 @@ namespace Face_Matcher_UI
 {
     class FaceMatcher
     {
+        public double MatchThreshold { get; set; } = 0.8;
         public void Run(string SuspectDir,string ImageDir,string ResultDir, Action<string> logCallback)
         {
             logCallback?.Invoke("FaceONNX: Multi-Suspect Augmented Face Matching");
@@ -19,6 +21,7 @@ namespace Face_Matcher_UI
             //string suspectDir = @"..\..\..\suspect";
             //string imageDir = @"..\..\..\images";
             //string resultDir = @"..\..\..\results";
+
             string suspectDir = SuspectDir;
             string imageDir = ImageDir;
             string resultDir = ResultDir;
@@ -45,12 +48,15 @@ namespace Face_Matcher_UI
                 using var cropped = CropFace(suspectImage, face.Box);
                 var augmentations = GenerateAugmentations(cropped);
 
-                var embeddings = augmentations.Select(img =>
+                var embeddings = new List<float[]>();
+                foreach (var img in augmentations)
                 {
-                    var emb = faceEmbedder.Forward(img);
-                    img.Dispose();
-                    return emb;
-                }).ToList();
+                    using (img)
+                    {
+                        var emb = faceEmbedder.Forward(img);
+                        embeddings.Add(emb);
+                    }
+                }
 
                 var averagedEmbedding = AverageEmbedding(embeddings);
                 var name = Path.GetFileNameWithoutExtension(suspectFile);
@@ -79,6 +85,7 @@ namespace Face_Matcher_UI
                     foreach (var face in groupFaces)
                     {
                         using var crop = CropFace(bitmap, face.Box);
+                        
                         var queryAugmentations = GenerateAugmentations(crop);
 
                         var queryEmbeddings = queryAugmentations.Select(img =>
@@ -96,31 +103,36 @@ namespace Face_Matcher_UI
                         foreach (var (name, embedding) in suspectEmbeddings)
                         {
                             double distance = CosineDistance(averagedQueryEmbedding, embedding);
-                            if (distance < bestDistance && distance < 0.8)
+                            if (distance < bestDistance)
                             {
                                 bestDistance = distance;
                                 matchedName = name;
-
-                                var paintData = new PaintData()
-                                {
-                                    Rectangle = face.Box,
-                                    Title = matchedName
-                                };
-                                painter.Draw(graphics, paintData);
-
-                                logCallback?.Invoke($"Loaded suspect: {matchedName} with distance {bestDistance}");
-                                var outputFile = Path.Combine(resultDir, Path.GetFileName(imageFile));
-                                bitmap.Save(outputFile);
-                                logCallback?.Invoke($"Processed {Path.GetFileName(imageFile)}");
                             }
                         }
+
+                        if (bestDistance < MatchThreshold)
+                        {
+                            var paintData = new PaintData()
+                            {
+                                Rectangle = face.Box,
+                                Title = matchedName
+                            };
+                            painter.Draw(graphics, paintData);
+
+                            logCallback?.Invoke($"Matched suspect: {matchedName} with distance {bestDistance}");
+
+                            var outputFile = Path.Combine(resultDir, Path.GetFileName(imageFile));
+                            bitmap.Save(outputFile);
+                            logCallback?.Invoke($"Processed {Path.GetFileName(imageFile)}");
+                        }
+
                     }
                 }
 
                 // All using blocks have completed here; file should now be unlocked
                 try
                 {
-                    File.Delete(imageFile);                  
+                   // File.Delete(imageFile);                  
                     logCallback?.Invoke($"Deleted input image: {Path.GetFileName(imageFile)}");
                 }
                 catch (Exception ex)
@@ -156,9 +168,37 @@ namespace Face_Matcher_UI
                 new Bitmap(original), // Original
                 ToGrayscale(original), // Grayscale
                 ApplyGaussianBlur(original), // Blurred
-                new Bitmap(original, new Size(original.Width / 2, original.Height / 2)) // Downscaled
+                new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
+                FlipHorizontal(original)                                // Horizontally Flipped
+        //        AdjustBrightness(original, 1.2f),
+        //AdjustBrightness(original, 0.8f),
+        //AdjustContrast(original, 1.2f),
+        //AdjustContrast(original, 0.8f),
+        //RotateImage(original, 5),
+        //RotateImage(original, -5)
             };
             return variants;
+        }
+        private static List<Bitmap> GenerateAugmentations_cctv(Bitmap original)
+        {
+            List<Bitmap> variants = new List<Bitmap>
+    {
+        new Bitmap(original), // Original
+        AdjustBrightness(original, 1.2f),
+        AdjustBrightness(original, 0.8f),
+        AdjustContrast(original, 1.2f),
+        AdjustContrast(original, 0.8f),
+        RotateImage(original, 5),
+        RotateImage(original, -5)
+    };
+            return variants;
+        }
+
+        private static Bitmap FlipHorizontal(Bitmap image)
+        {
+            Bitmap flipped = new Bitmap(image);
+            flipped.RotateFlip(RotateFlipType.RotateNoneFlipX);
+            return flipped;
         }
 
         private static Bitmap ToGrayscale(Bitmap original)
@@ -210,5 +250,182 @@ namespace Face_Matcher_UI
 
             return avg;
         }
+        private static Bitmap AdjustBrightness(Bitmap image, float factor)
+        {
+            Bitmap adjusted = new Bitmap(image.Width, image.Height);
+            using (Graphics g = Graphics.FromImage(adjusted))
+            {
+                var colorMatrix = new System.Drawing.Imaging.ColorMatrix(new float[][]
+                {
+            new float[] {factor, 0, 0, 0, 0},
+            new float[] {0, factor, 0, 0, 0},
+            new float[] {0, 0, factor, 0, 0},
+            new float[] {0, 0, 0, 1, 0},
+            new float[] {0, 0, 0, 0, 1}
+                });
+                var attributes = new System.Drawing.Imaging.ImageAttributes();
+                attributes.SetColorMatrix(colorMatrix);
+                g.DrawImage(image, new Rectangle(0, 0, image.Width, image.Height),
+                    0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
+            }
+            return adjusted;
+        }
+        private static Bitmap AdjustContrast(Bitmap image, float contrast)
+        {
+            float t = 0.5f * (1.0f - contrast);
+            Bitmap adjusted = new Bitmap(image.Width, image.Height);
+            using (Graphics g = Graphics.FromImage(adjusted))
+            {
+                var colorMatrix = new System.Drawing.Imaging.ColorMatrix(new float[][]
+                {
+            new float[] {contrast, 0, 0, 0, 0},
+            new float[] {0, contrast, 0, 0, 0},
+            new float[] {0, 0, contrast, 0, 0},
+            new float[] {0, 0, 0, 1, 0},
+            new float[] {t, t, t, 0, 1}
+                });
+                var attributes = new System.Drawing.Imaging.ImageAttributes();
+                attributes.SetColorMatrix(colorMatrix);
+                g.DrawImage(image, new Rectangle(0, 0, image.Width, image.Height),
+                    0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
+            }
+            return adjusted;
+        }
+        private static Bitmap RotateImage(Bitmap image, float angle)
+        {
+            Bitmap rotated = new Bitmap(image.Width, image.Height);
+            using (Graphics g = Graphics.FromImage(rotated))
+            {
+                g.TranslateTransform(image.Width / 2, image.Height / 2);
+                g.RotateTransform(angle);
+                g.TranslateTransform(-image.Width / 2, -image.Height / 2);
+                g.DrawImage(image, new Point(0, 0));
+            }
+            return rotated;
+        }
+        private static Bitmap NormalizeBrightnessContrast(Bitmap image)
+        {
+            var adjusted = new Bitmap(image.Width, image.Height);
+            using (Graphics g = Graphics.FromImage(adjusted))
+            {
+                float brightness = 1.1f; // Slight boost
+                float contrast = 1.2f;   // Increase contrast
+
+                var colorMatrix = new System.Drawing.Imaging.ColorMatrix(new float[][]
+                {
+            new float[] {contrast, 0, 0, 0, 0},
+            new float[] {0, contrast, 0, 0, 0},
+            new float[] {0, 0, contrast, 0, 0},
+            new float[] {0, 0, 0, 1, 0},
+            new float[] {brightness - 1, brightness - 1, brightness - 1, 0, 1}
+                });
+
+                var attributes = new System.Drawing.Imaging.ImageAttributes();
+                attributes.SetColorMatrix(colorMatrix);
+
+                g.DrawImage(image, new Rectangle(0, 0, image.Width, image.Height),
+                    0, 0, image.Width, image.Height, GraphicsUnit.Pixel, attributes);
+            }
+            return adjusted;
+        }
+        private static Bitmap EqualizeHistogram(Bitmap bmp)
+        {
+            var gray = ToGrayscale(bmp);
+            System.Drawing.Imaging.BitmapData data = gray.LockBits(new Rectangle(0, 0, gray.Width, gray.Height),
+                                            System.Drawing.Imaging.ImageLockMode.ReadWrite, gray.PixelFormat);
+
+            int bytes = Math.Abs(data.Stride) * gray.Height;
+            byte[] buffer = new byte[bytes];
+            System.Runtime.InteropServices.Marshal.Copy(data.Scan0, buffer, 0, bytes);
+
+            // Build histogram
+            int[] hist = new int[256];
+            for (int i = 0; i < buffer.Length; i++) hist[buffer[i]]++;
+
+            // Build cumulative distribution
+            int[] cdf = new int[256];
+            cdf[0] = hist[0];
+            for (int i = 1; i < 256; i++) cdf[i] = cdf[i - 1] + hist[i];
+
+            int cdfMin = cdf.First(c => c > 0);
+            int totalPixels = gray.Width * gray.Height;
+            byte[] result = new byte[buffer.Length];
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                result[i] = (byte)((cdf[buffer[i]] - cdfMin) * 255 / (totalPixels - cdfMin));
+            }
+
+            Marshal.Copy(result, 0, data.Scan0, bytes);
+            gray.UnlockBits(data);
+            return gray;
+        }
+        private static Bitmap Sharpen(Bitmap image)
+        {
+            float[,] kernel = {
+        { -1, -1, -1 },
+        { -1,  9, -1 },
+        { -1, -1, -1 }
+    };
+
+            Bitmap sharpened = new Bitmap(image.Width, image.Height);
+
+            for (int y = 1; y < image.Height - 1; y++)
+            {
+                for (int x = 1; x < image.Width - 1; x++)
+                {
+                    float r = 0, g = 0, b = 0;
+
+                    for (int ky = -1; ky <= 1; ky++)
+                    {
+                        for (int kx = -1; kx <= 1; kx++)
+                        {
+                            Color pixel = image.GetPixel(x + kx, y + ky);
+                            float kernelValue = kernel[ky + 1, kx + 1];
+
+                            r += pixel.R * kernelValue;
+                            g += pixel.G * kernelValue;
+                            b += pixel.B * kernelValue;
+                        }
+                    }
+
+                    int red = Clamp((int)r, 0, 255);
+                    int green = Clamp((int)g, 0, 255);
+                    int blue = Clamp((int)b, 0, 255);
+
+                    sharpened.SetPixel(x, y, Color.FromArgb(red, green, blue));
+                }
+            }
+
+            return sharpened;
+        }
+
+        private static int Clamp(int value, int min, int max)
+        {
+            return Math.Max(min, Math.Min(value, max));
+        }
+
+        private static Bitmap PreprocessCCTVFace(Bitmap image)
+        {
+            var steps = new List<Func<Bitmap, Bitmap>>
+    {
+        NormalizeBrightnessContrast,
+        EqualizeHistogram,
+        ApplyGaussianBlur
+       // Sharpen,
+    };
+
+            Bitmap current = new Bitmap(image);
+            foreach (var step in steps)
+            {
+                var next = step(current);
+                current.Dispose();
+                current = next;
+            }
+
+            return current;
+        }
+
+
+
     }
 }
