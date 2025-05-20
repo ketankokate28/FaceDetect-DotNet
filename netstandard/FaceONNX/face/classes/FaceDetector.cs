@@ -11,42 +11,22 @@ using UMapx.Imaging;
 namespace FaceONNX
 {
     /// <summary>
-    /// Defines face detector.
+    /// Defines face detector using YOLOv5 ONNX model.
     /// </summary>
-    public class FaceDetector : IFaceDetector
+    public class FaceDetector : IFaceDetector, IDisposable
     {
-        #region Private data
-
-        /// <summary>
-        /// Inference session.
-        /// </summary>
         private readonly InferenceSession _session;
+        private bool _disposed;
 
-        #endregion
+        public float DetectionThreshold { get; set; }
+        public float ConfidenceThreshold { get; set; }
+        public float NmsThreshold { get; set; }
 
-        #region Constructor
+        public static readonly string[] Labels = new[] { "Face" };
 
-        /// <summary>
-        /// Initializes face detector.
-        /// </summary>
-        /// <param name="detectionThreshold">Detection threshold</param>
-        /// <param name="confidenceThreshold">Confidence threshold</param>
-        /// <param name="nmsThreshold">NonMaxSuppression threshold</param>
         public FaceDetector(float detectionThreshold = 0.3f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
-        {
-            _session = new InferenceSession(Resources.yolov5s_face);
-            DetectionThreshold = detectionThreshold;
-            ConfidenceThreshold = confidenceThreshold;
-            NmsThreshold = nmsThreshold;
-        }
+            : this(new SessionOptions(), detectionThreshold, confidenceThreshold, nmsThreshold) { }
 
-        /// <summary>
-        /// Initializes face detector.
-        /// </summary>
-        /// <param name="options">Session options</param>
-        /// <param name="detectionThreshold">Detection threshold</param>
-        /// <param name="confidenceThreshold">Confidence threshold</param>
-        /// <param name="nmsThreshold">NonMaxSuppression threshold</param>
         public FaceDetector(SessionOptions options, float detectionThreshold = 0.3f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
         {
             _session = new InferenceSession(Resources.yolov5s_face, options);
@@ -55,198 +35,134 @@ namespace FaceONNX
             NmsThreshold = nmsThreshold;
         }
 
-        #endregion
-
-        #region Properties
-
-        /// <inheritdoc/>
-        public float DetectionThreshold { get; set; }
-
-        /// <inheritdoc/>
-        public float ConfidenceThreshold { get; set; }
-
-        /// <inheritdoc/>
-        public float NmsThreshold { get; set; }
-
-        /// <summary>
-        /// Gets labels.
-        /// </summary>
-        public static readonly string[] Labels = new string[]
-        {
-            "Face"
-        };
-
-        #endregion
-
-        #region Methods
-
-        /// <inheritdoc/>
         public FaceDetectionResult[] Forward(Bitmap image)
         {
-            var rgb = image.ToRGB(false);
-            return Forward(rgb);
+            return Forward(image.ToRGB(false));
         }
 
-        /// <inheritdoc/>
         public FaceDetectionResult[] Forward(float[][,] image)
         {
             if (image.Length != 3)
-                throw new ArgumentException("Image must be in BGR terms");
+                throw new ArgumentException("Image must have 3 channels (BGR).");
 
-            // params
-            var width = image[0].GetLength(1);
-            var height = image[0].GetLength(0);
-            var size = new Size(640, 640);
-            var resized = new float[3][,];
+            int originalWidth = image[0].GetLength(1);
+            int originalHeight = image[0].GetLength(0);
+            var targetSize = new Size(640, 640);
+            var resized = ResizePreserved(image, targetSize);
 
-            for (int i = 0; i < image.Length; i++)
-            {
-                resized[i] = image[i].ResizePreserved(size.Height, size.Width, 0.0f, InterpolationMode.Bilinear);
-            }
+            int yoloVectorLength = 15;
+            int classCount = Labels.Length;
+            int predictionLength = yoloVectorLength + classCount;
 
-            // yolo params
-            var yoloSquare = 15;
-            var classes = Labels.Length;
-            var count = classes + yoloSquare;
-
-            // pre-processing
             var inputMeta = _session.InputMetadata;
-            var name = inputMeta.Keys.ToArray()[0];
-            var dimentions = new[] { 1, 3, size.Height, size.Width };
-            var tensor = resized.ToFloatTensor(true);
-            tensor.Compute(255.0f, Matrice.Div); // scale
-            var inputData = tensor.Merge(true);
+            var inputName = inputMeta.Keys.First();
 
-            // session run
-            var t = new DenseTensor<float>(inputData, dimentions);
-            var inputs = new List<NamedOnnxValue>() { NamedOnnxValue.CreateFromTensor(name, t) };
-            using var sessionResults = _session?.Run(inputs);
-            var results = sessionResults?.ToArray();
+            var tensorData = resized.ToFloatTensor(true);
+            tensorData.Compute(255f, Matrice.Div);
+            var inputArray = tensorData.Merge(true);
 
-            if (results == null)
-                return new FaceDetectionResult[] { };
+            var tensor = new DenseTensor<float>(inputArray, new[] { 1, 3, targetSize.Height, targetSize.Width });
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
 
-            // post-processing
-            var vector = results[0].AsTensor<float>().ToArray();
-            var length = vector.Length / count;
-            var predictions = new float[length][];
+            using var results = _session.Run(inputs);
+            var resultTensor = results.FirstOrDefault()?.AsTensor<float>();
+            if (resultTensor == null)
+                return Array.Empty<FaceDetectionResult>();
 
-            for (int i = 0; i < length; i++)
+            var resultArray = resultTensor.ToArray();
+            int resultCount = resultArray.Length / predictionLength;
+
+            var detections = new List<float[]>();
+
+            for (int i = 0; i < resultCount; i++)
             {
-                var prediction = new float[count];
+                var score = resultArray[i * predictionLength + 4];
+                if (score <= DetectionThreshold)
+                    continue;
 
-                for (int j = 0; j < count; j++)
-                    prediction[j] = vector[i * count + j];
+                var det = new float[predictionLength];
+                for (int j = 0; j < predictionLength; j++)
+                    det[j] = resultArray[i * predictionLength + j];
 
-                predictions[i] = prediction;
+                // Convert center x, y, w, h to x1, y1, x2, y2
+                float cx = det[0], cy = det[1], w = det[2], h = det[3];
+                det[0] = cx - w / 2;
+                det[1] = cy - h / 2;
+                det[2] = cx + w / 2;
+                det[3] = cy + h / 2;
+
+                detections.Add(det);
             }
 
-            var list = new List<float[]>();
+            var filtered = NonMaxSuppressionExensions.AgnosticNMSFiltration(detections, NmsThreshold);
+            return PostProcess(filtered, originalWidth, originalHeight, targetSize, yoloVectorLength, classCount);
+        }
 
-            // seivining results
-            for (int i = 0; i < length; i++)
+        private FaceDetectionResult[] PostProcess(List<float[]> detections, int originalWidth, int originalHeight, Size resizedSize, int yoloVectorLength, int classCount)
+        {
+            var results = new List<FaceDetectionResult>();
+
+            float scaleX = (float)resizedSize.Width / originalWidth;
+            float scaleY = (float)resizedSize.Height / originalHeight;
+            float scale = Math.Min(scaleX, scaleY);
+            float padX = (resizedSize.Width - originalWidth * scale) / 2f;
+            float padY = (resizedSize.Height - originalHeight * scale) / 2f;
+
+            foreach (var det in detections)
             {
-                var prediction = predictions[i];
+                var classScores = new float[classCount];
+                Array.Copy(det, yoloVectorLength, classScores, 0, classCount);
+                float maxScore = Matrice.Max(classScores, out int classIndex);
 
-                if (prediction[4] > DetectionThreshold)
+                if (maxScore > ConfidenceThreshold)
                 {
-                    var a = prediction[0];
-                    var b = prediction[1];
-                    var c = prediction[2];
-                    var d = prediction[3];
-
-                    prediction[0] = a - c / 2;
-                    prediction[1] = b - d / 2;
-                    prediction[2] = a + c / 2;
-                    prediction[3] = b + d / 2;
-
-                    //for (int j = yoloSquare; j < prediction.Length; j++)
-                    //{
-                    //    prediction[j] *= prediction[4];
-                    //}
-
-                    list.Add(prediction);
-                }
-            }
-
-            // non-max suppression
-            list = NonMaxSuppressionExensions.AgnosticNMSFiltration(list, NmsThreshold);
-
-            // perform
-            predictions = list.ToArray();
-            length = predictions.Length;
-
-            // backward transform
-            var k0 = (float)size.Width / width;
-            var k1 = (float)size.Height / height;
-            float gain = Math.Min(k0, k1);
-            float p0 = (size.Width - width * gain) / 2;
-            float p1 = (size.Height - height * gain) / 2;
-
-            // collect results
-            var detectionResults = new List<FaceDetectionResult>();
-
-            for (int i = 0; i < length; i++)
-            {
-                var prediction = predictions[i];
-                var labels = new float[classes];
-
-                for (int j = 0; j < classes; j++)
-                {
-                    labels[j] = prediction[j + yoloSquare];
-                }
-
-                var max = Matrice.Max(labels, out int argmax);
-
-                if (max > ConfidenceThreshold)
-                {
-                    var rectangle = Rectangle.FromLTRB(
-                        (int)((prediction[0] - p0) / gain),
-                        (int)((prediction[1] - p1) / gain),
-                        (int)((prediction[2] - p0) / gain),
-                        (int)((prediction[3] - p1) / gain));
+                    Rectangle rect = Rectangle.FromLTRB(
+                        (int)((det[0] - padX) / scale),
+                        (int)((det[1] - padY) / scale),
+                        (int)((det[2] - padX) / scale),
+                        (int)((det[3] - padY) / scale)
+                    );
 
                     var points = new Point[5];
-
-                    for (int j = 0; j < 5; j++)
+                    for (int i = 0; i < 5; i++)
                     {
-                        points[j] = new Point
+                        points[i] = new Point
                         {
-                            X = (int)((prediction[5 + 2 * j + 0] - p0) / gain),
-                            Y = (int)((prediction[5 + 2 * j + 1] - p1) / gain)
+                            X = (int)((det[5 + 2 * i] - padX) / scale),
+                            Y = (int)((det[5 + 2 * i + 1] - padY) / scale)
                         };
                     }
 
-                    var landmarks = new Face5Landmarks(points);
-
-                    detectionResults.Add(new FaceDetectionResult
+                    results.Add(new FaceDetectionResult
                     {
-                        Rectangle = rectangle,
-                        Id = argmax,
-                        Score = max,
-                        Points = landmarks
+                        Rectangle = rect,
+                        Id = classIndex,
+                        Score = maxScore,
+                        Points = new Face5Landmarks(points)
                     });
                 }
             }
 
-            return detectionResults.ToArray();
+            return results.ToArray();
         }
 
-        #endregion
+        private static float[][,] ResizePreserved(float[][,] image, Size targetSize)
+        {
+            var resized = new float[3][,];
+            for (int i = 0; i < image.Length; i++)
+            {
+                resized[i] = image[i].ResizePreserved(targetSize.Height, targetSize.Width, 0.0f, InterpolationMode.Bilinear);
+            }
+            return resized;
+        }
 
-        #region IDisposable
-
-        private bool _disposed;
-
-        /// <inheritdoc/>
         public void Dispose()
         {
             Dispose(true);
             GC.SuppressFinalize(this);
         }
 
-        /// <inheritdoc/>
-        protected void Dispose(bool disposing)
+        protected virtual void Dispose(bool disposing)
         {
             if (!_disposed)
             {
@@ -258,14 +174,9 @@ namespace FaceONNX
             }
         }
 
-        /// <summary>
-        /// Destructor.
-        /// </summary>
         ~FaceDetector()
         {
             Dispose(false);
         }
-
-        #endregion
     }
 }
