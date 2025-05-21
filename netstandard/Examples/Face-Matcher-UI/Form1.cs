@@ -20,6 +20,9 @@ namespace Face_Matcher_UI
             comboBox1.SelectedItem = "Directory";
             comboBox2.SelectedItem = "Directory";
             pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
+            btnPrevious.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            btnNext.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            label1.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             //txtLog.Location = new Point(pictureBox1.Left + 10, pictureBox1.Top);
             //txtLog.Size = new Size(300, pictureBox1.Height);
 
