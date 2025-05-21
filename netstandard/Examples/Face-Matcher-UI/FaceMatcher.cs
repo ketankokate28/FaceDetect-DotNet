@@ -21,7 +21,15 @@ namespace Face_Matcher_UI
         {
             var stopwatch = Stopwatch.StartNew(); // Start timing
             logCallback?.Invoke("FaceONNX: Optimized Multi-Suspect Augmented Face Matching");
-            Directory.CreateDirectory(resultDir);
+
+            if (!Directory.Exists(resultDir))
+            {
+                Directory.CreateDirectory(resultDir);
+            }
+            else
+            {
+                Array.ForEach(Directory.GetFiles(resultDir), File.Delete); 
+            }
 
             using var faceDetector = new FaceDetector();
             using var faceEmbedder = new FaceEmbedder();
@@ -123,8 +131,8 @@ namespace Face_Matcher_UI
                         logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
                     }
 
-                    File.Delete(imageFile);
-                    logCallback?.Invoke($"Deleted input image: {Path.GetFileName(imageFile)}");
+                    //File.Delete(imageFile);
+                    //logCallback?.Invoke($"Deleted input image: {Path.GetFileName(imageFile)}");
                 }
                 catch (Exception ex)
                 {
@@ -207,9 +215,9 @@ namespace Face_Matcher_UI
                 {
                     new Bitmap(original), // Original
                     ToGrayscale(original), // Grayscale
-                    //ApplyGaussianBlur(original), // Blurred
-                   // new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
-                   // FlipHorizontal(original) // Flip
+                    ApplyGaussianBlur(original), // Blurred
+                   new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
+                   FlipHorizontal(original) // Flip
                 };
             }
             catch
