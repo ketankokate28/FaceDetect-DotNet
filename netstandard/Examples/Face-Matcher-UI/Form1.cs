@@ -27,6 +27,15 @@ namespace Face_Matcher_UI
             txtLog.Width = this.ClientSize.Width - txtLog.Left - 10;
             fullPath = Path.GetFullPath(resultDir);
 
+            // Create directory if it doesn't exist
+            if (!Directory.Exists(fullPath))
+            {
+                Directory.CreateDirectory(fullPath);
+            }
+            else
+            {
+                //Array.ForEach(Directory.GetFiles(resultDir), File.Delete); 
+            }
             watcher = new FileSystemWatcher(fullPath);
             watcher.Filter = "*.*";
             watcher.IncludeSubdirectories = false;
@@ -43,15 +52,6 @@ namespace Face_Matcher_UI
 
             //label1.Location = new Point(btnPrevious_Click_1.Bottom, pictureBox1.Bottom + 10);
 
-            // Create directory if it doesn't exist
-            if (!Directory.Exists(fullPath))
-            {
-                Directory.CreateDirectory(fullPath);
-            }
-            else
-            {
-                //Array.ForEach(Directory.GetFiles(resultDir), File.Delete); 
-            }
             imageFiles = Directory.GetFiles(fullPath, "*.*")
                                   .Where(f => IsImageFile(f))
                                   .OrderBy(f => f) // sort by filename ascending
