@@ -122,60 +122,7 @@
         </member>
         <member name="T:FaceONNX.FaceDetector">
             <summary>
-            Defines face detector.
-            </summary>
-        </member>
-        <member name="F:FaceONNX.FaceDetector._session">
-            <summary>
-            Inference session.
-            </summary>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.#ctor(System.Single,System.Single,System.Single)">
-            <summary>
-            Initializes face detector.
-            </summary>
-            <param name="detectionThreshold">Detection threshold</param>
-            <param name="confidenceThreshold">Confidence threshold</param>
-            <param name="nmsThreshold">NonMaxSuppression threshold</param>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.#ctor(Microsoft.ML.OnnxRuntime.SessionOptions,System.Single,System.Single,System.Single)">
-            <summary>
-            Initializes face detector.
-            </summary>
-            <param name="options">Session options</param>
-            <param name="detectionThreshold">Detection threshold</param>
-            <param name="confidenceThreshold">Confidence threshold</param>
-            <param name="nmsThreshold">NonMaxSuppression threshold</param>
-        </member>
-        <member name="P:FaceONNX.FaceDetector.DetectionThreshold">
-            <inheritdoc/>
-        </member>
-        <member name="P:FaceONNX.FaceDetector.ConfidenceThreshold">
-            <inheritdoc/>
-        </member>
-        <member name="P:FaceONNX.FaceDetector.NmsThreshold">
-            <inheritdoc/>
-        </member>
-        <member name="F:FaceONNX.FaceDetector.Labels">
-            <summary>
-            Gets labels.
-            </summary>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.Forward(System.Drawing.Bitmap)">
-            <inheritdoc/>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.Forward(System.Single[0:,0:][])">
-            <inheritdoc/>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.Dispose">
-            <inheritdoc/>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.Dispose(System.Boolean)">
-            <inheritdoc/>
-        </member>
-        <member name="M:FaceONNX.FaceDetector.Finalize">
-            <summary>
-            Destructor.
+            Defines face detector using YOLOv5 ONNX model.
             </summary>
         </member>
         <member name="T:FaceONNX.FaceEmbedder">
