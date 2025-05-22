@@ -116,6 +116,7 @@ namespace Face_Matcher_UI
                         if (bestDist < MatchThreshold)
                         {
                             painter.Draw(graphics, new PaintData { Rectangle = face.Box, Title = bestMatch });
+                            //DrawFaceBox(graphics, face.Box, bestMatch);
                             logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
                             matchedAny = true;
                         }
@@ -143,6 +144,36 @@ namespace Face_Matcher_UI
             stopwatch.Stop();
             logCallback?.Invoke("Face matching complete.");
             logCallback?.Invoke($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
+        }
+        private void DrawFaceBox(Graphics g, Rectangle rect, string label)
+        {
+            // Draw semi-transparent box
+            using (Pen pen = new Pen(Color.FromArgb(255, 0, 128, 255), 3))  // Blue, 3px
+            {
+                g.DrawRectangle(pen, rect);
+            }
+
+            // Measure label text size
+            using (Font font = new Font("Segoe UI", 12, FontStyle.Bold))
+            using (Brush textBrush = Brushes.White)
+            {
+                SizeF textSize = g.MeasureString(label, font);
+                RectangleF textBgRect = new RectangleF(
+                    rect.Left,
+                    rect.Top - textSize.Height - 4,  // Draw above the box
+                    textSize.Width + 10,
+                    textSize.Height + 4
+                );
+
+                // Draw label background
+                using (Brush bgBrush = new SolidBrush(Color.FromArgb(200, 0, 0, 0)))  // Semi-transparent black
+                {
+                    g.FillRectangle(bgBrush, textBgRect);
+                }
+
+                // Draw label text
+                g.DrawString(label, font, textBrush, textBgRect.Left + 5, textBgRect.Top + 2);
+            }
         }
 
         public Dictionary<string, float[]> PrecomputeSuspectEmbeddings(string suspectDir, Action<string> log)
@@ -180,7 +211,15 @@ namespace Face_Matcher_UI
         {
             using var faceDetector = new FaceDetector();
             using var faceEmbedder = new FaceEmbedder();
-            using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 4), Transparency = 0 };
+            //using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 15,), Transparency = 0 };
+           
+            using var painter = new Painter()
+            {
+                BoxPen = new Pen(Color.DeepSkyBlue, 2), // Thinner and more modern
+                TextFont = new Font("Segoe UI", 10, FontStyle.Bold), // Clearer system font
+                //br = Brushes.White, // If supported
+                Transparency = 0
+            };
 
             foreach (var imageFile in imageFiles)
             {
@@ -224,7 +263,12 @@ namespace Face_Matcher_UI
 
                         if (bestDist < MatchThreshold)
                         {
-                            painter.Draw(graphics, new PaintData { Rectangle = face.Box, Title = bestMatch });
+                            var nameBox = new Rectangle(face.Box.X, face.Box.Y - 20, Math.Max(face.Box.Width, 150), 20);
+                            painter.Draw(graphics, new PaintData { Rectangle = face.Box });
+                            graphics.DrawString(bestMatch, painter.TextFont, Brushes.White, nameBox.Location);
+
+                            //DrawFaceBox(graphics, face.Box, bestMatch);
+                            //Draw(graphics, face.Box, bestMatch);
                             logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
                             matchedAny = true;
                         }
@@ -249,6 +293,36 @@ namespace Face_Matcher_UI
                 logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
             }
         }
+
+        public void Draw(Graphics g, Rectangle faceRect, string label)
+        {
+            // Draw bounding box with thin pen
+            using var pen = new Pen(Color.DeepSkyBlue, 2);
+            g.DrawRectangle(pen, faceRect);
+
+            if (!string.IsNullOrEmpty(label))
+            {
+                var font = new Font("Segoe UI", 10, FontStyle.Bold);
+                var textBrush = Brushes.White;
+                var backgroundBrush = Brushes.Black;
+
+                // Measure the text
+                var textSize = g.MeasureString(label, font);
+
+                // Determine label position
+                int labelX = faceRect.X;
+                int labelY = faceRect.Y - (int)textSize.Height - 4;
+                if (labelY < 0) labelY = faceRect.Bottom + 4;
+
+                // Draw background rectangle for text
+                g.FillRectangle(backgroundBrush, labelX, labelY, textSize.Width, textSize.Height);
+
+                // Draw text
+                g.DrawString(label, font, textBrush, new PointF(labelX, labelY));
+            }
+        }
+
+
 
         private static Bitmap LoadBitmapUnlocked(string path)
         {
