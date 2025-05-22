@@ -4,6 +4,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using UMapx.Core;
 using UMapx.Imaging;
@@ -21,7 +22,7 @@ namespace FaceONNX
         /// </summary>
         private readonly InferenceSession _session;
         #endregion
-
+        private static readonly object _sessionLock = new object();
         #region Constructor
 
         /// <summary>
@@ -29,7 +30,12 @@ namespace FaceONNX
         /// </summary>
         public FaceEmbedder()
         {
-            _session = new InferenceSession(Resources.recognition_resnet27);
+            // _session = new InferenceSession(Resources.recognition_resnet27);
+            var options = new SessionOptions();
+            options.AppendExecutionProvider_DML(); // ✅ DirectML instead of CUDA
+          //  options.AppendExecutionProvider_CPU(); // Force CPU
+            var modelPath = Path.Combine(AppContext.BaseDirectory, "recognition_resnet27.onnx");
+                _session = new InferenceSession(modelPath, options);
         }
 
         /// <summary>
@@ -83,7 +89,11 @@ namespace FaceONNX
 
             // session run
             var t = new DenseTensor<float>(inputData, dimentions);
-            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(name, t) };
+            var inputs = new List<NamedOnnxValue>
+        {
+            NamedOnnxValue.CreateFromTensor("input", new DenseTensor<float>(inputData, new[] { 1, 3, 128, 128 }))
+        };
+           // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(name, t) };
             using var outputs = _session.Run(inputs);
             var results = outputs.ToArray();
             var length = results.Length;

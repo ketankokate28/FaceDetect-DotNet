@@ -1,3 +1,6 @@
+using FaceONNX;
+using System.Diagnostics;
+using System.Numerics;
 using System.Windows.Forms;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Timer = System.Windows.Forms.Timer;
@@ -14,6 +17,8 @@ namespace Face_Matcher_UI
         string fullPath = "";
         private FileSystemWatcher watcher;
         private Timer imageCheckTimer;
+        private Dictionary<string, float[]> cachedSuspectEmbeddings = null;
+
         public Form1()
         {
             InitializeComponent();
@@ -25,7 +30,7 @@ namespace Face_Matcher_UI
             label1.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             //txtLog.Location = new Point(pictureBox1.Left + 10, pictureBox1.Top);
             //txtLog.Size = new Size(300, pictureBox1.Height);
-
+           // pictureLoading1.Image = Properties.Resources.loader1;
             txtLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             txtLog.Width = this.ClientSize.Width - txtLog.Left - 10;
             fullPath = Path.GetFullPath(resultDir);
@@ -194,7 +199,7 @@ namespace Face_Matcher_UI
                             pictureBox1.Image = null;
                         }
 
-                        pictureBox1.Image = Image.FromStream(ms);
+                       pictureBox1.Image = Image.FromStream(ms);
                     }
 
                     label1.Text = $"Image {currentIndex + 1} of {imageFiles.Length}";
@@ -206,7 +211,7 @@ namespace Face_Matcher_UI
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show("Error loading image: " + ex.Message);
+                   // MessageBox.Show("Error loading image: " + ex.Message);
                     return;
                 }
             }
@@ -230,29 +235,55 @@ namespace Face_Matcher_UI
                 MessageBox.Show("Please select valid directories.");
                 return;
             }
+
             Directory.CreateDirectory(resultDir);
             button1.Enabled = false;
-            button1.UseVisualStyleBackColor = false; // Allow custom BackColor
-            button1.BackColor = Color.Red; // Red when disabled
+            button1.UseVisualStyleBackColor = false;
+            button1.BackColor = Color.Red;
 
             var matcher = new FaceMatcher();
-
+            if (cachedSuspectEmbeddings == null)
+            {
+                MessageBox.Show("Please load suspect embeddings first.");
+                return;
+            }
             Task.Run(() =>
             {
-                matcher.Run(suspectDir, imageDir, fullPath, message =>
+                var stopwatch = Stopwatch.StartNew(); // Start timing
+                //var suspectEmbeddings = matcher.PrecomputeSuspectEmbeddings(suspectDir, message =>
+                //{
+                //    txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
+                //});
+
+                var allImageFiles = Directory.GetFiles(imageDir);
+                const int batchSize = 200;
+
+                var batches = Enumerable.Range(0, (allImageFiles.Length + batchSize - 1) / batchSize)
+                    .Select(i => allImageFiles.Skip(i * batchSize).Take(batchSize).ToArray())
+                    .ToList();
+
+                Parallel.ForEach(batches, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, batch =>
                 {
-                    txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
+                    matcher.RunBatch(cachedSuspectEmbeddings, batch, resultDir, message =>
+                    {
+                        txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
+                    });
                 });
+
+                stopwatch.Stop();  // Stop after all processing is done
 
                 txtLog.Invoke((MethodInvoker)(() =>
                 {
+                    txtLog.AppendText($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds\n");
                     button1.Enabled = true;
-                    button1.BackColor = SystemColors.Control; // Reset to default system color
+                    button1.BackColor = SystemColors.Control;
                 }));
             });
 
+            txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText("\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds")));
 
         }
+
 
         private void btnBrowseSuspect_Click(object sender, EventArgs e)
         {
@@ -274,6 +305,7 @@ namespace Face_Matcher_UI
                     if (openFileDialog.ShowDialog() == DialogResult.OK)
                     {
                         suspectDir = openFileDialog.FileName;
+
                     }
                 }
             }
@@ -285,8 +317,39 @@ namespace Face_Matcher_UI
                     if (folderDialog.ShowDialog() == DialogResult.OK)
                     {
                         suspectDir = folderDialog.SelectedPath;
+                        cachedSuspectEmbeddings = null;
+                        PrecomputeSuspectEmbeddingsAsync(folderDialog.SelectedPath);
                     }
                 }
+            }
+        }
+        private async void PrecomputeSuspectEmbeddingsAsync(string suspectDir)
+        {
+            //pictureLoading1.Visible = true;
+            this.Enabled = false;
+            Cursor.Current = Cursors.WaitCursor;
+            txtLog.AppendText("Precomputing suspect embeddings...\n");
+
+            await Task.Run(() =>
+            {
+                var matcher = new FaceMatcher();
+                cachedSuspectEmbeddings = matcher.PrecomputeSuspectEmbeddings(suspectDir, message =>
+                {
+                    txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
+                });
+            });
+
+            //pictureLoading1.Visible = false;
+            txtLog.AppendText("Suspect embeddings ready.\n");
+            this.Enabled = true;
+            Cursor.Current = Cursors.Default;
+            if (!Directory.Exists(resultDir))
+            {
+                Directory.CreateDirectory(resultDir);
+            }
+            else
+            {
+                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
             }
         }
 

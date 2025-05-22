@@ -28,7 +28,7 @@ namespace Face_Matcher_UI
             }
             else
             {
-                Array.ForEach(Directory.GetFiles(resultDir), File.Delete); 
+                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
             }
 
             using var faceDetector = new FaceDetector();
@@ -38,7 +38,7 @@ namespace Face_Matcher_UI
             var suspectFiles = Directory.GetFiles(suspectDir);
 
             // Parallel loading of suspect images
-            Parallel.ForEach(suspectFiles, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, suspectFile =>
+            foreach (var suspectFile in suspectFiles)
             {
                 try
                 {
@@ -47,7 +47,7 @@ namespace Face_Matcher_UI
                     if (faces.Length == 0)
                     {
                         logCallback?.Invoke($"No face found in suspect image: {suspectFile}");
-                        return;
+                        continue;
                     }
 
                     using var cropped = CropFace(suspectImage, faces[0].Box);
@@ -69,21 +69,18 @@ namespace Face_Matcher_UI
                 {
                     logCallback?.Invoke($"Error loading suspect {suspectFile}: {ex.Message}");
                 }
-            });
-
+            }
             var groupImages = Directory.GetFiles(imageDir);
             using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 4), Transparency = 0 };
 
-            Parallel.ForEach(groupImages, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, imageFile =>
+            foreach (var imageFile in groupImages)
             {
                 var sw = Stopwatch.StartNew();
-
                 try
                 {
                     using var bitmap = LoadBitmapUnlocked(imageFile);
                     using var graphics = Graphics.FromImage(bitmap);
 
-                    // Optionally: use thread-local faceDetector/faceEmbedder if not thread-safe
                     var groupFaces = faceDetector.Forward(bitmap);
                     bool matchedAny = false;
 
@@ -92,11 +89,14 @@ namespace Face_Matcher_UI
                         using var crop = CropFace(bitmap, face.Box);
                         var queryAugmentations = GenerateAugmentations(crop);
 
-                        // Faster parallel embedding generation
-                        var queryEmbeddings = queryAugmentations.AsParallel().Select(img =>
+                        var queryEmbeddings = new List<float[]>();
+                        foreach (var img in queryAugmentations)
                         {
-                            using (img) return faceEmbedder.Forward(img);
-                        }).ToList();
+                            using (img)
+                            {
+                                queryEmbeddings.Add(faceEmbedder.Forward(img));
+                            }
+                        }
 
                         var averagedQuery = AverageEmbedding(queryEmbeddings);
 
@@ -130,9 +130,6 @@ namespace Face_Matcher_UI
                     {
                         logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
                     }
-
-                    //File.Delete(imageFile);
-                    //logCallback?.Invoke($"Deleted input image: {Path.GetFileName(imageFile)}");
                 }
                 catch (Exception ex)
                 {
@@ -141,11 +138,118 @@ namespace Face_Matcher_UI
 
                 sw.Stop();
                 logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
-            });
+            }
+
             stopwatch.Stop();
             logCallback?.Invoke("Face matching complete.");
             logCallback?.Invoke($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
         }
+
+        public Dictionary<string, float[]> PrecomputeSuspectEmbeddings(string suspectDir, Action<string> log)
+        {
+            using var faceDetector = new FaceDetector();
+            using var faceEmbedder = new FaceEmbedder();
+
+            var result = new Dictionary<string, float[]>();
+
+            foreach (var suspectFile in Directory.GetFiles(suspectDir))
+            {
+                using var image = LoadBitmapUnlocked(suspectFile);
+                var faces = faceDetector.Forward(image);
+                if (faces.Length == 0) continue;
+
+                using var cropped = CropFace(image, faces[0].Box);
+                var augmentations = GenerateAugmentations(cropped);
+                var embeddings = augmentations.Select(img =>
+                {
+                    using (img) return faceEmbedder.Forward(img);
+                }).ToList();
+
+                result[Path.GetFileNameWithoutExtension(suspectFile)] = AverageEmbedding(embeddings);
+                log($"Loaded suspect {Path.GetFileNameWithoutExtension(suspectFile)}");
+            }
+
+            return result;
+        }
+
+        public void RunBatch(
+    Dictionary<string, float[]> suspectEmbeddings,
+    string[] imageFiles,
+    string resultDir,
+    Action<string> logCallback)
+        {
+            using var faceDetector = new FaceDetector();
+            using var faceEmbedder = new FaceEmbedder();
+            using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 4), Transparency = 0 };
+
+            foreach (var imageFile in imageFiles)
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    using var bitmap = LoadBitmapUnlocked(imageFile);
+                    using var graphics = Graphics.FromImage(bitmap);
+
+                    var groupFaces = faceDetector.Forward(bitmap);
+                    bool matchedAny = false;
+
+                    foreach (var face in groupFaces)
+                    {
+                        using var crop = CropFace(bitmap, face.Box);
+                        var queryAugmentations = GenerateAugmentations(crop);
+
+                        var queryEmbeddings = new List<float[]>();
+                        foreach (var img in queryAugmentations)
+                        {
+                            using (img)
+                            {
+                                queryEmbeddings.Add(faceEmbedder.Forward(img));
+                            }
+                        }
+
+                        var averagedQuery = AverageEmbedding(queryEmbeddings);
+
+                        string bestMatch = "Unknown";
+                        double bestDist = double.MaxValue;
+
+                        foreach (var (name, embedding) in suspectEmbeddings)
+                        {
+                            double dist = CosineDistanceSIMD(averagedQuery, embedding);
+                            if (dist < bestDist)
+                            {
+                                bestDist = dist;
+                                bestMatch = name;
+                            }
+                        }
+
+                        if (bestDist < MatchThreshold)
+                        {
+                            painter.Draw(graphics, new PaintData { Rectangle = face.Box, Title = bestMatch });
+                            logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
+                            matchedAny = true;
+                        }
+                    }
+
+                    if (matchedAny)
+                    {
+                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+                    }
+                    else
+                    {
+                        logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logCallback?.Invoke($"Error processing image {imageFile}: {ex.Message}");
+                }
+
+                sw.Stop();
+                logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+            }
+        }
+
         private static Bitmap LoadBitmapUnlocked(string path)
         {
             using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
@@ -279,7 +383,7 @@ namespace Face_Matcher_UI
             return avg;
         }
 
-private static List<Bitmap> GenerateAugmentations_cctv(Bitmap original)
+        private static List<Bitmap> GenerateAugmentations_cctv(Bitmap original)
         {
             List<Bitmap> variants = new List<Bitmap>
     {
