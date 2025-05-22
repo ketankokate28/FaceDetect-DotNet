@@ -59,15 +59,5 @@ namespace Face_Matcher_UI.Properties {
                 resourceCulture = value;
             }
         }
-        
-        /// <summary>
-        ///   Looks up a localized resource of type System.Drawing.Bitmap.
-        /// </summary>
-        public static System.Drawing.Bitmap loader1 {
-            get {
-                object obj = ResourceManager.GetObject("loader1", resourceCulture);
-                return ((System.Drawing.Bitmap)(obj));
-            }
-        }
     }
 }
