@@ -112,7 +112,7 @@
             // 
             // pictureBox1
             // 
-            pictureBox1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            pictureBox1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
             pictureBox1.Location = new Point(12, 84);
             pictureBox1.Name = "pictureBox1";
             pictureBox1.Size = new Size(1002, 504);

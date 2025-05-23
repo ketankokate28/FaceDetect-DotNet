@@ -215,7 +215,7 @@ namespace Face_Matcher_UI
            
             using var painter = new Painter()
             {
-                BoxPen = new Pen(Color.DeepSkyBlue, 2), // Thinner and more modern
+                BoxPen = new Pen(Color.Yellow, 4), // Thinner and more modern
                 TextFont = new Font("Segoe UI", 10, FontStyle.Bold), // Clearer system font
                 //br = Brushes.White, // If supported
                 Transparency = 0
@@ -248,28 +248,39 @@ namespace Face_Matcher_UI
 
                         var averagedQuery = AverageEmbedding(queryEmbeddings);
 
-                        string bestMatch = "Unknown";
-                        double bestDist = double.MaxValue;
+                      //  string bestMatch = "Unknown";
+                       // double bestDist = double.MaxValue;
 
-                        foreach (var (name, embedding) in suspectEmbeddings)
-                        {
-                            double dist = CosineDistanceSIMD(averagedQuery, embedding);
-                            if (dist < bestDist)
-                            {
-                                bestDist = dist;
-                                bestMatch = name;
-                            }
-                        }
+                        //foreach (var (name, embedding) in suspectEmbeddings)
+                        //{
+                        //    double dist = CosineDistanceSIMD(averagedQuery, embedding);
+                        //    if (dist < bestDist)
+                        //    {
+                        //        bestDist = dist;
+                        //        bestMatch = name;
+                        //    }
+                        //}
 
-                        if (bestDist < MatchThreshold)
+                        var bestMatch = suspectEmbeddings
+    .AsParallel()
+    .Select(kvp => new {
+        Name = kvp.Key,
+        Distance = CosineDistanceSIMD(averagedQuery, kvp.Value)
+    })
+    .OrderBy(kvp => kvp.Distance)
+    .First();
+
+
+                        if (bestMatch.Distance < MatchThreshold)
                         {
+                            double similarityPercent = (1.0 - bestMatch.Distance) * 100.0;
                             var nameBox = new Rectangle(face.Box.X, face.Box.Y - 20, Math.Max(face.Box.Width, 150), 20);
                             painter.Draw(graphics, new PaintData { Rectangle = face.Box });
-                            graphics.DrawString(bestMatch, painter.TextFont, Brushes.White, nameBox.Location);
+                            graphics.DrawString(bestMatch.Name + " " +Math.Round(similarityPercent)+ "%", painter.TextFont, Brushes.White, nameBox.Location);
 
                             //DrawFaceBox(graphics, face.Box, bestMatch);
                             //Draw(graphics, face.Box, bestMatch);
-                            logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
+                            logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
                         }
                     }
@@ -393,8 +404,8 @@ namespace Face_Matcher_UI
                 {
                     new Bitmap(original), // Original
                     ToGrayscale(original), // Grayscale
-                    ApplyGaussianBlur(original), // Blurred
-                   new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
+                    //ApplyGaussianBlur(original), // Blurred
+                   //new Bitmap(original, new Size(original.Width / 2, original.Height / 2)), // Downscaled
                    FlipHorizontal(original) // Flip
                 };
             }

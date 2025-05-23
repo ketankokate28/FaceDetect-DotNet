@@ -256,11 +256,20 @@ namespace Face_Matcher_UI
                 //});
 
                 var allImageFiles = Directory.GetFiles(imageDir);
-                const int batchSize = 200;
+                //const int batchSize =60;
 
-                var batches = Enumerable.Range(0, (allImageFiles.Length + batchSize - 1) / batchSize)
-                    .Select(i => allImageFiles.Skip(i * batchSize).Take(batchSize).ToArray())
-                    .ToList();
+                //var batches = Enumerable.Range(0, (allImageFiles.Length + batchSize - 1) / batchSize)
+                //    .Select(i => allImageFiles.Skip(i * batchSize).Take(batchSize).ToArray())
+                //    .ToList();
+
+                int totalFiles = allImageFiles.Length;
+                int half = (int)Math.Ceiling(totalFiles / 2.0);
+
+                var batches = new List<string[]>
+{
+    allImageFiles.Take(half).ToArray(),
+    allImageFiles.Skip(half).ToArray()
+};
 
                 Parallel.ForEach(batches, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, batch =>
                 {
