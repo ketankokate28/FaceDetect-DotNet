@@ -30,10 +30,8 @@ namespace FaceONNX
         /// </summary>
         public FaceEmbedder()
         {
-            // _session = new InferenceSession(Resources.recognition_resnet27);
             var options = new SessionOptions();
             options.AppendExecutionProvider_DML(); // ✅ DirectML instead of CUDA
-          //  options.AppendExecutionProvider_CPU(); // Force CPU
             var modelPath = Path.Combine(AppContext.BaseDirectory, "recognition_resnet27.onnx");
                 _session = new InferenceSession(modelPath, options);
         }
