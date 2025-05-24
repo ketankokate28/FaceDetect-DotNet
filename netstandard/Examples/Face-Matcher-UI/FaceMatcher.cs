@@ -17,165 +17,6 @@ namespace Face_Matcher_UI
     {
         public double MatchThreshold { get; set; } = 0.7;
 
-        public void Run(string suspectDir, string imageDir, string resultDir, Action<string> logCallback)
-        {
-            var stopwatch = Stopwatch.StartNew(); // Start timing
-            logCallback?.Invoke("FaceONNX: Optimized Multi-Suspect Augmented Face Matching");
-
-            if (!Directory.Exists(resultDir))
-            {
-                Directory.CreateDirectory(resultDir);
-            }
-            else
-            {
-                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
-            }
-
-            using var faceDetector = new FaceDetector();
-            using var faceEmbedder = new FaceEmbedder();
-
-            var suspectEmbeddings = new ConcurrentDictionary<string, float[]>();
-            var suspectFiles = Directory.GetFiles(suspectDir);
-
-            // Parallel loading of suspect images
-            foreach (var suspectFile in suspectFiles)
-            {
-                try
-                {
-                    using var suspectImage = LoadBitmapUnlocked(suspectFile);
-                    var faces = faceDetector.Forward(suspectImage);
-                    if (faces.Length == 0)
-                    {
-                        logCallback?.Invoke($"No face found in suspect image: {suspectFile}");
-                        continue;
-                    }
-
-                    using var cropped = CropFace(suspectImage, faces[0].Box);
-                    var augmentations = GenerateAugmentations(cropped);
-                    var embeddings = new List<float[]>();
-
-                    foreach (var img in augmentations)
-                    {
-                        using (img)
-                        {
-                            embeddings.Add(faceEmbedder.Forward(img));
-                        }
-                    }
-
-                    suspectEmbeddings[Path.GetFileNameWithoutExtension(suspectFile)] = AverageEmbedding(embeddings);
-                    logCallback?.Invoke($"Loaded suspect: {Path.GetFileNameWithoutExtension(suspectFile)} with {embeddings.Count} embeddings");
-                }
-                catch (Exception ex)
-                {
-                    logCallback?.Invoke($"Error loading suspect {suspectFile}: {ex.Message}");
-                }
-            }
-            var groupImages = Directory.GetFiles(imageDir);
-            using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 4), Transparency = 0 };
-
-            foreach (var imageFile in groupImages)
-            {
-                var sw = Stopwatch.StartNew();
-                try
-                {
-                    using var bitmap = LoadBitmapUnlocked(imageFile);
-                    using var graphics = Graphics.FromImage(bitmap);
-
-                    var groupFaces = faceDetector.Forward(bitmap);
-                    bool matchedAny = false;
-
-                    foreach (var face in groupFaces)
-                    {
-                        using var crop = CropFace(bitmap, face.Box);
-                        var queryAugmentations = GenerateAugmentations(crop);
-
-                        var queryEmbeddings = new List<float[]>();
-                        foreach (var img in queryAugmentations)
-                        {
-                            using (img)
-                            {
-                                queryEmbeddings.Add(faceEmbedder.Forward(img));
-                            }
-                        }
-
-                        var averagedQuery = AverageEmbedding(queryEmbeddings);
-
-                        string bestMatch = "Unknown";
-                        double bestDist = double.MaxValue;
-
-                        foreach (var (name, embedding) in suspectEmbeddings)
-                        {
-                            double dist = CosineDistanceSIMD(averagedQuery, embedding);
-                            if (dist < bestDist)
-                            {
-                                bestDist = dist;
-                                bestMatch = name;
-                            }
-                        }
-
-                        if (bestDist < MatchThreshold)
-                        {
-                            painter.Draw(graphics, new PaintData { Rectangle = face.Box, Title = bestMatch });
-                            //DrawFaceBox(graphics, face.Box, bestMatch);
-                            logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
-                            matchedAny = true;
-                        }
-                    }
-
-                    if (matchedAny)
-                    {
-                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
-                        logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
-                    }
-                    else
-                    {
-                        logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    logCallback?.Invoke($"Error processing image {imageFile}: {ex.Message}");
-                }
-
-                sw.Stop();
-                logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
-            }
-
-            stopwatch.Stop();
-            logCallback?.Invoke("Face matching complete.");
-            logCallback?.Invoke($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
-        }
-        private void DrawFaceBox(Graphics g, Rectangle rect, string label)
-        {
-            // Draw semi-transparent box
-            using (Pen pen = new Pen(Color.FromArgb(255, 0, 128, 255), 3))  // Blue, 3px
-            {
-                g.DrawRectangle(pen, rect);
-            }
-
-            // Measure label text size
-            using (Font font = new Font("Segoe UI", 12, FontStyle.Bold))
-            using (Brush textBrush = Brushes.White)
-            {
-                SizeF textSize = g.MeasureString(label, font);
-                RectangleF textBgRect = new RectangleF(
-                    rect.Left,
-                    rect.Top - textSize.Height - 4,  // Draw above the box
-                    textSize.Width + 10,
-                    textSize.Height + 4
-                );
-
-                // Draw label background
-                using (Brush bgBrush = new SolidBrush(Color.FromArgb(200, 0, 0, 0)))  // Semi-transparent black
-                {
-                    g.FillRectangle(bgBrush, textBgRect);
-                }
-
-                // Draw label text
-                g.DrawString(label, font, textBrush, textBgRect.Left + 5, textBgRect.Top + 2);
-            }
-        }
-
         public Dictionary<string, float[]> PrecomputeSuspectEmbeddings(string suspectDir, Action<string> log)
         {
             using var faceDetector = new FaceDetector();
@@ -217,7 +58,6 @@ namespace Face_Matcher_UI
             {
                 BoxPen = new Pen(Color.Yellow, 4), // Thinner and more modern
                 TextFont = new Font("Segoe UI", 10, FontStyle.Bold), // Clearer system font
-                //br = Brushes.White, // If supported
                 Transparency = 0
             };
 
@@ -247,20 +87,6 @@ namespace Face_Matcher_UI
                         }
 
                         var averagedQuery = AverageEmbedding(queryEmbeddings);
-
-                      //  string bestMatch = "Unknown";
-                       // double bestDist = double.MaxValue;
-
-                        //foreach (var (name, embedding) in suspectEmbeddings)
-                        //{
-                        //    double dist = CosineDistanceSIMD(averagedQuery, embedding);
-                        //    if (dist < bestDist)
-                        //    {
-                        //        bestDist = dist;
-                        //        bestMatch = name;
-                        //    }
-                        //}
-
                         var bestMatch = suspectEmbeddings
     .AsParallel()
     .Select(kvp => new {
@@ -277,9 +103,6 @@ namespace Face_Matcher_UI
                             var nameBox = new Rectangle(face.Box.X, face.Box.Y - 20, Math.Max(face.Box.Width, 150), 20);
                             painter.Draw(graphics, new PaintData { Rectangle = face.Box });
                             graphics.DrawString(bestMatch.Name + " " +Math.Round(similarityPercent)+ "%", painter.TextFont, Brushes.White, nameBox.Location);
-
-                            //DrawFaceBox(graphics, face.Box, bestMatch);
-                            //Draw(graphics, face.Box, bestMatch);
                             logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
                         }
@@ -293,6 +116,16 @@ namespace Face_Matcher_UI
                     else
                     {
                         logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+                    }
+                    // Delete the processed file
+                    try
+                    {
+                        File.Delete(imageFile);
+                        logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        logCallback?.Invoke($"Error deleting file {Path.GetFileName(imageFile)}: {ex.Message}");
                     }
                 }
                 catch (Exception ex)
@@ -467,6 +300,147 @@ namespace Face_Matcher_UI
 
             return avg;
         }
+
+        
+        public void Run(string suspectDir, string imageDir, string resultDir, Action<string> logCallback)
+        {
+            var stopwatch = Stopwatch.StartNew(); // Start timing
+            logCallback?.Invoke("FaceONNX: Optimized Multi-Suspect Augmented Face Matching");
+
+            if (!Directory.Exists(resultDir))
+            {
+                Directory.CreateDirectory(resultDir);
+            }
+            else
+            {
+                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
+            }
+
+            using var faceDetector = new FaceDetector();
+            using var faceEmbedder = new FaceEmbedder();
+
+            var suspectEmbeddings = new ConcurrentDictionary<string, float[]>();
+            var suspectFiles = Directory.GetFiles(suspectDir);
+
+            // Parallel loading of suspect images
+            foreach (var suspectFile in suspectFiles)
+            {
+                try
+                {
+                    using var suspectImage = LoadBitmapUnlocked(suspectFile);
+                    var faces = faceDetector.Forward(suspectImage);
+                    if (faces.Length == 0)
+                    {
+                        logCallback?.Invoke($"No face found in suspect image: {suspectFile}");
+                        continue;
+                    }
+
+                    using var cropped = CropFace(suspectImage, faces[0].Box);
+                    var augmentations = GenerateAugmentations(cropped);
+                    var embeddings = new List<float[]>();
+
+                    foreach (var img in augmentations)
+                    {
+                        using (img)
+                        {
+                            embeddings.Add(faceEmbedder.Forward(img));
+                        }
+                    }
+
+                    suspectEmbeddings[Path.GetFileNameWithoutExtension(suspectFile)] = AverageEmbedding(embeddings);
+                    logCallback?.Invoke($"Loaded suspect: {Path.GetFileNameWithoutExtension(suspectFile)} with {embeddings.Count} embeddings");
+                }
+                catch (Exception ex)
+                {
+                    logCallback?.Invoke($"Error loading suspect {suspectFile}: {ex.Message}");
+                }
+            }
+            var groupImages = Directory.GetFiles(imageDir);
+            using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 4), Transparency = 0 };
+
+            foreach (var imageFile in groupImages)
+            {
+                var sw = Stopwatch.StartNew();
+                try
+                {
+                    using var bitmap = LoadBitmapUnlocked(imageFile);
+                    using var graphics = Graphics.FromImage(bitmap);
+
+                    var groupFaces = faceDetector.Forward(bitmap);
+                    bool matchedAny = false;
+
+                    foreach (var face in groupFaces)
+                    {
+                        using var crop = CropFace(bitmap, face.Box);
+                        var queryAugmentations = GenerateAugmentations(crop);
+
+                        var queryEmbeddings = new List<float[]>();
+                        foreach (var img in queryAugmentations)
+                        {
+                            using (img)
+                            {
+                                queryEmbeddings.Add(faceEmbedder.Forward(img));
+                            }
+                        }
+
+                        var averagedQuery = AverageEmbedding(queryEmbeddings);
+
+                        string bestMatch = "Unknown";
+                        double bestDist = double.MaxValue;
+
+                        foreach (var (name, embedding) in suspectEmbeddings)
+                        {
+                            double dist = CosineDistanceSIMD(averagedQuery, embedding);
+                            if (dist < bestDist)
+                            {
+                                bestDist = dist;
+                                bestMatch = name;
+                            }
+                        }
+
+                        if (bestDist < MatchThreshold)
+                        {
+                            painter.Draw(graphics, new PaintData { Rectangle = face.Box, Title = bestMatch });
+                            //DrawFaceBox(graphics, face.Box, bestMatch);
+                            logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestDist:F3}");
+                            matchedAny = true;
+                        }
+                    }
+
+                    if (matchedAny)
+                    {
+                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+                    }
+                    else
+                    {
+                        logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+                    }
+                    // Delete the processed file
+                    try
+                    {
+                        File.Delete(imageFile);
+                        logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
+                    }
+                    catch (Exception ex)
+                    {
+                        logCallback?.Invoke($"Error deleting file {Path.GetFileName(imageFile)}: {ex.Message}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    logCallback?.Invoke($"Error processing image {imageFile}: {ex.Message}");
+                }
+
+                sw.Stop();
+                logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+            }
+
+            stopwatch.Stop();
+            logCallback?.Invoke("Face matching complete.");
+            logCallback?.Invoke($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds");
+        }
+
 
         private static List<Bitmap> GenerateAugmentations_cctv(Bitmap original)
         {

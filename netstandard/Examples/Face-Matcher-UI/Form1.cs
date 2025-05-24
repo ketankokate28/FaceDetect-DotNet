@@ -1,7 +1,9 @@
 using FaceONNX;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
 using System.Windows.Forms;
+using UMapx.Visualization;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Timer = System.Windows.Forms.Timer;
 
@@ -18,9 +20,13 @@ namespace Face_Matcher_UI
         private FileSystemWatcher watcher;
         private Timer imageCheckTimer;
         private Dictionary<string, float[]> cachedSuspectEmbeddings = null;
+        ConcurrentQueue<string> imageQueue = new ConcurrentQueue<string>();
+        ConcurrentDictionary<string, bool> processedImages = new ConcurrentDictionary<string, bool>();
+        CancellationTokenSource cts = new CancellationTokenSource();
 
         public Form1()
         {
+
             InitializeComponent();
             comboBox1.SelectedItem = "Directory";
             comboBox2.SelectedItem = "Directory";
@@ -247,52 +253,135 @@ namespace Face_Matcher_UI
                 MessageBox.Show("Please load suspect embeddings first.");
                 return;
             }
-            Task.Run(() =>
+            var allImageFiles = Directory.GetFiles(imageDir, "*.*")
+        .Where(IsImage)
+        .ToArray();
+
+            foreach (var img in allImageFiles)
             {
-                var stopwatch = Stopwatch.StartNew(); // Start timing
-                //var suspectEmbeddings = matcher.PrecomputeSuspectEmbeddings(suspectDir, message =>
-                //{
-                //    txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
-                //});
-
-                var allImageFiles = Directory.GetFiles(imageDir);
-                //const int batchSize =60;
-
-                //var batches = Enumerable.Range(0, (allImageFiles.Length + batchSize - 1) / batchSize)
-                //    .Select(i => allImageFiles.Skip(i * batchSize).Take(batchSize).ToArray())
-                //    .ToList();
-
-                int totalFiles = allImageFiles.Length;
-                int half = (int)Math.Ceiling(totalFiles / 2.0);
-
-                var batches = new List<string[]>
-{
-    allImageFiles.Take(half).ToArray(),
-    allImageFiles.Skip(half).ToArray()
-};
-
-                Parallel.ForEach(batches, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, batch =>
+                if (!processedImages.ContainsKey(img))
                 {
-                    matcher.RunBatch(cachedSuspectEmbeddings, batch, resultDir, message =>
-                    {
-                        txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
-                    });
-                });
+                    imageQueue.Enqueue(img);
+                }
+            }
 
-                stopwatch.Stop();  // Stop after all processing is done
+            StartImageWatcher(imageDir);
+            StartProcessingLoop(cachedSuspectEmbeddings);
+            txtLog.AppendText("Started monitoring and processing...\n");
+            //            Task.Run(() =>
+            //            {
+            //                var stopwatch = Stopwatch.StartNew(); // Start timing
 
-                txtLog.Invoke((MethodInvoker)(() =>
-                {
-                    txtLog.AppendText($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds\n");
-                    button1.Enabled = true;
-                    button1.BackColor = SystemColors.Control;
-                }));
-            });
+            //                var allImageFiles = Directory.GetFiles(imageDir);
+
+            //                int totalFiles = allImageFiles.Length;
+            //                int half = (int)Math.Ceiling(totalFiles / 2.0);
+
+            //                var batches = new List<string[]>
+            //{
+            //    allImageFiles.Take(half).ToArray(),
+            //    allImageFiles.Skip(half).ToArray()
+            //};
+
+            //                Parallel.ForEach(batches, new ParallelOptions { MaxDegreeOfParallelism = Environment.ProcessorCount }, batch =>
+            //                {
+            //                    matcher.RunBatch(cachedSuspectEmbeddings, batch, resultDir, message =>
+            //                    {
+            //                        txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
+            //                    });
+            //                });
+
+            //                stopwatch.Stop();  // Stop after all processing is done
+
+            //                txtLog.Invoke((MethodInvoker)(() =>
+            //                {
+            //                    txtLog.AppendText($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds\n");
+            //                    button1.Enabled = true;
+            //                    button1.BackColor = SystemColors.Control;
+            //                }));
+            //            });
 
             txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText("\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds")));
 
         }
+        void StartProcessingLoop(Dictionary<string, float[]> cachedSuspectEmbeddings)
+        {
+            Task.Run(() =>
+            {
+                var sw = Stopwatch.StartNew();
+                var matcher = new FaceMatcher();
 
+                using var faceDetector = new FaceDetector();
+                using var faceEmbedder = new FaceEmbedder();
+                List<string> currentBatch = new List<string>();
+                DateTime lastBatchTime = DateTime.UtcNow;
+
+                while (!cts.Token.IsCancellationRequested)
+                {
+                 
+                    bool newItemAdded = false;
+
+                    while (imageQueue.TryDequeue(out string imageFile))
+                    {
+                        if (!processedImages.ContainsKey(imageFile))
+                        {
+                            currentBatch.Add(imageFile);
+                            newItemAdded = true;
+                        }
+
+                        if (currentBatch.Count >= 1000)
+                            break; // Stop if batch is large enough
+                    }
+
+                    bool timeToFlush = (DateTime.UtcNow - lastBatchTime).TotalSeconds >= 1;
+
+                    if (currentBatch.Count > 0 && (currentBatch.Count >= 1000 || timeToFlush))
+                    {
+
+
+                        matcher.RunBatch(cachedSuspectEmbeddings, currentBatch.ToArray(), resultDir, message =>
+                        {
+                            txtLog.Invoke((MethodInvoker)(() =>
+                                txtLog.AppendText(message + $" \nTotal processing time: {sw.Elapsed}")));
+                        });
+
+                        foreach (var file in currentBatch)
+                            processedImages.TryAdd(file, true);
+
+                        currentBatch.Clear();
+                        lastBatchTime = DateTime.UtcNow;
+                    }
+
+                    if (!newItemAdded)
+                        Thread.Sleep(50); // Avoid busy looping if queue is empty
+                }
+            }, cts.Token);
+        }
+
+        private FileSystemWatcher watcher1;
+        void StartImageWatcher(string imageDir)
+        {
+            watcher1 = new FileSystemWatcher(imageDir);
+            watcher1.IncludeSubdirectories = false;
+            watcher1.Filter = "*.*";
+            watcher1.NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime;
+
+            watcher1.Created += (s, e) =>
+            {
+                if (IsImage(e.FullPath) && !processedImages.ContainsKey(e.FullPath))
+                {
+                    imageQueue.Enqueue(e.FullPath);
+                    Console.WriteLine($"File created and queued: {e.FullPath}");
+                }
+            };
+
+            watcher1.EnableRaisingEvents = true;
+        }
+        bool IsImage(string path)
+        {
+            string ext = Path.GetExtension(path).ToLower();
+            return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp";
+        }
 
         private void btnBrowseSuspect_Click(object sender, EventArgs e)
         {
