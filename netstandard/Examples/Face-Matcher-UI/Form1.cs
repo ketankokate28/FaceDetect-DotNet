@@ -26,7 +26,7 @@ namespace Face_Matcher_UI
         ConcurrentQueue<string> imageQueue = new ConcurrentQueue<string>();
         ConcurrentDictionary<string, bool> processedImages = new ConcurrentDictionary<string, bool>();
         CancellationTokenSource cts = new CancellationTokenSource();
-        string connectionString = "Data Source=face_match.db";
+        string connectionString = "Data Source=Database/face_match.db";
         public Form1()
         {
             InitializeComponent();
@@ -41,7 +41,7 @@ namespace Face_Matcher_UI
            // pictureLoading1.Image = Properties.Resources.loader1;
             txtLog.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
             txtLog.Width = this.ClientSize.Width - txtLog.Left - 10;
-            fullPath = Path.GetFullPath(resultDir);
+            fullPath = Path.GetFullPath(tempResultDir);
 
             // Create directory if it doesn't exist
             if (!Directory.Exists(fullPath))
@@ -295,7 +295,7 @@ namespace Face_Matcher_UI
             }
             else
             {
-                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
+                Array.ForEach(Directory.GetFiles(tempResultDir), File.Delete);
             }
             button1.Enabled = false;
             button1.UseVisualStyleBackColor = false;
