@@ -1,7 +1,9 @@
 using FaceONNX;
+using Microsoft.Data.Sqlite;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using System.Windows.Forms;
 using UMapx.Visualization;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
@@ -13,7 +15,8 @@ namespace Face_Matcher_UI
     {
         string suspectDir = "";
         string imageDir = "";
-        string resultDir = Path.Combine("..", "..", "..", "..", "..", "Results");
+        string resultDir = Path.Combine(AppContext.BaseDirectory, "Results");
+        string tempResultDir = Path.Combine(AppContext.BaseDirectory, "Results_Temp");
         private string[] imageFiles;
         private int currentIndex = 0;
         string fullPath = "";
@@ -23,10 +26,9 @@ namespace Face_Matcher_UI
         ConcurrentQueue<string> imageQueue = new ConcurrentQueue<string>();
         ConcurrentDictionary<string, bool> processedImages = new ConcurrentDictionary<string, bool>();
         CancellationTokenSource cts = new CancellationTokenSource();
-
+        string connectionString = "Data Source=face_match.db";
         public Form1()
         {
-
             InitializeComponent();
             comboBox1.SelectedItem = "Directory";
             comboBox2.SelectedItem = "Directory";
@@ -70,9 +72,55 @@ namespace Face_Matcher_UI
                                   .Where(f => IsImageFile(f))
                                   .OrderBy(f => f) // sort by filename ascending
                                   .ToArray();
-
+            PrecomputeSuspectEmbeddingsAsync(Path.Combine(AppContext.BaseDirectory, "suspects"));
 
         }
+
+        private Dictionary<int, string> LoadSuspectList()
+        {
+            var suspects = new Dictionary<int, string>();
+
+            try
+            {
+                using (var connection = new SqliteConnection(connectionString))
+                {
+                    connection.Open();
+
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = @"
+                    SELECT suspect_id, first_name 
+                    FROM suspects;
+                ";
+
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                var id = reader.GetInt32(0);              // "id" column
+                                var name = reader.IsDBNull(1) ? "" : reader.GetString(1); // "firstName" column, null-safe
+
+                                // Avoid duplicates, or log if needed
+                                if (!suspects.ContainsKey(id))
+                                {
+                                    suspects.Add(id, name);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle or log the exception as per your application's logging strategy
+                Console.Error.WriteLine($"Error loading suspect list: {ex.Message}");
+                throw; // Optional: rethrow or return empty dictionary
+            }
+
+            return suspects;
+        }
+
+
         private void Watcher_Deleted(object sender, FileSystemEventArgs e)
         {
             this.Invoke((MethodInvoker)(() =>
@@ -236,13 +284,19 @@ namespace Face_Matcher_UI
 
         private void button1_Click(object sender, EventArgs e)
         {
-            if (!Directory.Exists(suspectDir) || !Directory.Exists(imageDir))
+            if(cachedSuspectEmbeddings.Count <1 || !Directory.Exists(imageDir))
             {
-                MessageBox.Show("Please select valid directories.");
+                MessageBox.Show("Please select valid directories for suspect or images.");
                 return;
             }
-
-            Directory.CreateDirectory(resultDir);
+            if (!Directory.Exists(tempResultDir))
+            {
+                Directory.CreateDirectory(tempResultDir);
+            }
+            else
+            {
+                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
+            }
             button1.Enabled = false;
             button1.UseVisualStyleBackColor = false;
             button1.BackColor = Color.Red;
@@ -306,14 +360,14 @@ namespace Face_Matcher_UI
         }
         void StartProcessingLoop(Dictionary<string, float[]> cachedSuspectEmbeddings)
         {
+            var matcher = new FaceMatcher();
+            List<string> currentBatch = new List<string>();
+            var sw = Stopwatch.StartNew();
+
             Task.Run(() =>
             {
-                var sw = Stopwatch.StartNew();
-                var matcher = new FaceMatcher();
+               
 
-                using var faceDetector = new FaceDetector();
-                using var faceEmbedder = new FaceEmbedder();
-                List<string> currentBatch = new List<string>();
                 DateTime lastBatchTime = DateTime.UtcNow;
 
                 while (!cts.Token.IsCancellationRequested)
@@ -323,11 +377,13 @@ namespace Face_Matcher_UI
 
                     while (imageQueue.TryDequeue(out string imageFile))
                     {
-                        if (!processedImages.ContainsKey(imageFile))
-                        {
-                            currentBatch.Add(imageFile);
-                            newItemAdded = true;
-                        }
+                        currentBatch.Add(imageFile);
+                        newItemAdded = true;
+                        //if (!processedImages.ContainsKey(imageFile))
+                        //{
+                        //    currentBatch.Add(imageFile);
+                        //    newItemAdded = true;
+                        //}
 
                         if (currentBatch.Count >= 1000)
                             break; // Stop if batch is large enough
@@ -338,22 +394,21 @@ namespace Face_Matcher_UI
                     if (currentBatch.Count > 0 && (currentBatch.Count >= 1000 || timeToFlush))
                     {
 
-
-                        matcher.RunBatch(cachedSuspectEmbeddings, currentBatch.ToArray(), resultDir, message =>
+                        matcher.RunBatch(cachedSuspectEmbeddings, currentBatch.ToArray(), resultDir,tempResultDir, message =>
                         {
                             txtLog.Invoke((MethodInvoker)(() =>
                                 txtLog.AppendText(message + $" \nTotal processing time: {sw.Elapsed}")));
                         });
 
-                        foreach (var file in currentBatch)
-                            processedImages.TryAdd(file, true);
+                        //foreach (var file in currentBatch)
+                        //    processedImages.TryAdd(file, true);
 
                         currentBatch.Clear();
                         lastBatchTime = DateTime.UtcNow;
                     }
 
                     if (!newItemAdded)
-                        Thread.Sleep(50); // Avoid busy looping if queue is empty
+                        Thread.Sleep(500); // Avoid busy looping if queue is empty
                 }
             }, cts.Token);
         }
@@ -427,11 +482,23 @@ namespace Face_Matcher_UI
             this.Enabled = false;
             Cursor.Current = Cursors.WaitCursor;
             txtLog.AppendText("Precomputing suspect embeddings...\n");
-
+            Dictionary<int, string> suspectList = LoadSuspectList();
             await Task.Run(() =>
             {
                 var matcher = new FaceMatcher();
-                cachedSuspectEmbeddings = matcher.PrecomputeSuspectEmbeddings(suspectDir, message =>
+
+                // Filter only folders matching suspect IDs
+
+                var validSuspectFolders = Directory.GetDirectories(suspectDir)
+                    .Where(folderPath =>
+                    {
+                        var folderName = Path.GetFileName(folderPath);
+                        return int.TryParse(folderName, out int id) && suspectList.ContainsKey(id);
+                    })
+                    .ToList();
+
+                // Call matcher logic only with valid folders
+                cachedSuspectEmbeddings = matcher.PrecomputeSuspectEmbeddings(validSuspectFolders, message =>
                 {
                     txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText(message + Environment.NewLine)));
                 });
@@ -441,14 +508,6 @@ namespace Face_Matcher_UI
             txtLog.AppendText("Suspect embeddings ready.\n");
             this.Enabled = true;
             Cursor.Current = Cursors.Default;
-            if (!Directory.Exists(resultDir))
-            {
-                Directory.CreateDirectory(resultDir);
-            }
-            else
-            {
-                Array.ForEach(Directory.GetFiles(resultDir), File.Delete);
-            }
         }
 
         private void button2_Click(object sender, EventArgs e)

@@ -1,4 +1,5 @@
 ﻿using FaceONNX;
+using Microsoft.Data.Sqlite;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -9,46 +10,65 @@ using System.Linq;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using UMapx.Visualization;
 
 namespace Face_Matcher_UI
 {
     class FaceMatcher
     {
-        public double MatchThreshold { get; set; } = 0.7;
+        public double MatchThreshold { get; set; } = 0.65;
+        string connectionString = "Data Source=face_match.db";
 
-        public Dictionary<string, float[]> PrecomputeSuspectEmbeddings(string suspectDir, Action<string> log)
+        public Dictionary<string, float[]> PrecomputeSuspectEmbeddings(List<string> suspectFolders, Action<string> log)
         {
             using var faceDetector = new FaceDetector();
             using var faceEmbedder = new FaceEmbedder();
 
             var result = new Dictionary<string, float[]>();
 
-            foreach (var suspectFile in Directory.GetFiles(suspectDir))
+            foreach (var folder in suspectFolders)
             {
-                using var image = LoadBitmapUnlocked(suspectFile);
-                var faces = faceDetector.Forward(image);
-                if (faces.Length == 0) continue;
+                var suspectId = Path.GetFileName(folder); // suspect folder name is the ID (as string)
+                var embeddings = new List<float[]>();
 
-                using var cropped = CropFace(image, faces[0].Box);
-                var augmentations = GenerateAugmentations(cropped);
-                var embeddings = augmentations.Select(img =>
+                foreach (var suspectFile in Directory.GetFiles(folder, "*.jpeg"))
                 {
-                    using (img) return faceEmbedder.Forward(img);
-                }).ToList();
+                    using var image = LoadBitmapUnlocked(suspectFile);
+                    var faces = faceDetector.Forward(image);
+                    if (faces.Length == 0) continue;
 
-                result[Path.GetFileNameWithoutExtension(suspectFile)] = AverageEmbedding(embeddings);
-                log($"Loaded suspect {Path.GetFileNameWithoutExtension(suspectFile)}");
+                    using var cropped = CropFace(image, faces[0].Box);
+                    var augmentations = GenerateAugmentations(cropped);
+                    var imageEmbeddings = augmentations.Select(img =>
+                    {
+                        using (img) return faceEmbedder.Forward(img);
+                    });
+
+                    embeddings.AddRange(imageEmbeddings);
+                    log?.Invoke($"Processed image {Path.GetFileName(suspectFile)} for suspect {suspectId}");
+                }
+
+                if (embeddings.Count > 0)
+                {
+                    result[suspectId +"-" +GetSuspectName(suspectId)] = AverageEmbedding(embeddings);
+                    log?.Invoke($"Finished embeddings for suspect {suspectId} with {embeddings.Count} vectors.");
+                }
+                else
+                {
+                    log?.Invoke($"No faces found for suspect {suspectId}, skipping.");
+                }
             }
 
             return result;
         }
 
         public void RunBatch(
-    Dictionary<string, float[]> suspectEmbeddings,
-    string[] imageFiles,
-    string resultDir,
-    Action<string> logCallback)
+           Dictionary<string, float[]> suspectEmbeddings,
+           string[] imageFiles,
+           string resultDir,
+           string tempResultDir,
+           Action<string> logCallback)
         {
             using var faceDetector = new FaceDetector();
             using var faceEmbedder = new FaceEmbedder();
@@ -71,7 +91,9 @@ namespace Face_Matcher_UI
 
                     var groupFaces = faceDetector.Forward(bitmap);
                     bool matchedAny = false;
-
+                    int bestMatchID = 0;
+                    string bestMatchName = "";
+                    float bestMatchDistance = 0.0f;
                     foreach (var face in groupFaces)
                     {
                         using var crop = CropFace(bitmap, face.Box);
@@ -105,19 +127,32 @@ namespace Face_Matcher_UI
                             graphics.DrawString(bestMatch.Name + " " +Math.Round(similarityPercent)+ "%", painter.TextFont, Brushes.White, nameBox.Location);
                             logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
+                            int hyphenIndex = bestMatch.Name.IndexOf('-');
+                            if (hyphenIndex > 0)
+                            {
+                                string idPart = bestMatch.Name.Substring(0, hyphenIndex);
+                                bestMatchName = bestMatch.Name.Substring(hyphenIndex + 1);
+                                if (int.TryParse(idPart, out int parsedId))
+                                {
+                                    bestMatchID = parsedId;
+                                }
+                            }
+                            bestMatchDistance =(float)bestMatch.Distance;
                         }
                     }
 
                     if (matchedAny)
                     {
                         bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));                       
                         logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+                        InsertMatchFaceLog("", Path.Combine(resultDir, Path.GetFileName(imageFile)), 1, bestMatchID, bestMatchName, bestMatchDistance);
                     }
                     else
                     {
                         logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
                     }
-                    // Delete the processed file
+                      // Delete the processed file
                     try
                     {
                         File.Delete(imageFile);
@@ -170,11 +205,13 @@ namespace Face_Matcher_UI
 
         private static Bitmap LoadBitmapUnlocked(string path)
         {
-            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using var ms = new MemoryStream();
-            fs.CopyTo(ms);
-            ms.Position = 0;
-            return new Bitmap(ms);
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+    return new Bitmap(fs);
+            //using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            //using var ms = new MemoryStream();
+            //fs.CopyTo(ms);
+            //ms.Position = 0;
+            //return new Bitmap(ms);
         }
         public static double CosineDistanceSIMD(float[] a, float[] b)
         {
@@ -300,8 +337,80 @@ namespace Face_Matcher_UI
 
             return avg;
         }
+        public void InsertMatchFaceLog(string captureTime, string frame, int cctvId, int? suspectId, string suspectName, float distance)
+        {
+            using (var connection = new SqliteConnection(connectionString))
+            {
+                connection.Open();
 
-        
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = @"
+                INSERT INTO Matchfacelogs 
+                (capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date)
+                VALUES 
+                (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date);
+            ";
+
+                    command.Parameters.AddWithValue("@capture_time", DateTime.Now);
+                    command.Parameters.AddWithValue("@frame", frame);
+                    command.Parameters.AddWithValue("@cctv_id", cctvId);
+                    command.Parameters.AddWithValue("@suspect_id", (object?)suspectId ?? DBNull.Value); // nullable FK
+                    command.Parameters.AddWithValue("@suspect", suspectName ?? (object)DBNull.Value);
+                    command.Parameters.AddWithValue("@distance", distance);
+                    command.Parameters.AddWithValue("@created_date", DateTime.Now);
+
+                    try
+                    {
+                        command.ExecuteNonQuery();
+                    }
+                    catch (SqliteException ex)
+                    {
+                        // Log or rethrow as needed
+                        Console.WriteLine($"SQLite error: {ex.Message}");
+                        throw;
+                    }
+                }
+            }
+        }
+        private string GetSuspectName(string suspectid)
+        {
+            string suspectName = "Unknown";
+
+            try
+            {
+                using (var connection = new SqliteConnection(connectionString))
+                {
+                    connection.Open();
+
+                    using (var command = connection.CreateCommand())
+                    {
+                        command.CommandText = @"
+                    SELECT first_name 
+                    FROM suspects where suspect_id=" + suspectid;
+
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+
+                                suspectName = reader.IsDBNull(0) ? "" : reader.GetString(0); // "firstName" column, null-safe
+                            }
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // Handle or log the exception as per your application's logging strategy
+                Console.Error.WriteLine($"Error loading suspect list: {ex.Message}");
+                throw; // Optional: rethrow or return empty dictionary
+            }
+
+            return suspectName;
+        }
+
+
         public void Run(string suspectDir, string imageDir, string resultDir, Action<string> logCallback)
         {
             var stopwatch = Stopwatch.StartNew(); // Start timing
@@ -630,8 +739,6 @@ namespace Face_Matcher_UI
 
             return current;
         }
-
-
-
+      
     }
 }
