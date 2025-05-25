@@ -18,7 +18,7 @@ namespace Face_Matcher_UI
     class FaceMatcher
     {
         public double MatchThreshold { get; set; } = 0.65;
-        string connectionString = "Data Source=face_match.db";
+        string connectionString = "Data Source=Database/face_match.db";
 
         public Dictionary<string, float[]> PrecomputeSuspectEmbeddings(List<string> suspectFolders, Action<string> log)
         {
@@ -127,41 +127,37 @@ namespace Face_Matcher_UI
                             graphics.DrawString(bestMatch.Name + " " +Math.Round(similarityPercent)+ "%", painter.TextFont, Brushes.White, nameBox.Location);
                             logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
-                            int hyphenIndex = bestMatch.Name.IndexOf('-');
-                            if (hyphenIndex > 0)
-                            {
-                                string idPart = bestMatch.Name.Substring(0, hyphenIndex);
-                                bestMatchName = bestMatch.Name.Substring(hyphenIndex + 1);
-                                if (int.TryParse(idPart, out int parsedId))
-                                {
-                                    bestMatchID = parsedId;
-                                }
-                            }
-                            bestMatchDistance =(float)bestMatch.Distance;
+                            Bitmap clonedBitmap = (Bitmap)bitmap.Clone(); // Clone for background use
+                            //originalBitmap.Dispose();
+                            ProcessAndLogMatch(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback);
+
                         }
                     }
 
                     if (matchedAny)
                     {
-                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
-                        bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));                       
-                        logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
-                        InsertMatchFaceLog("", Path.Combine(resultDir, Path.GetFileName(imageFile)), 1, bestMatchID, bestMatchName, bestMatchDistance);
+                       
+                        //bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        //bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));                       
+                        //logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+                        //InsertMatchFaceLog("", Path.Combine(resultDir, Path.GetFileName(imageFile)), 1, bestMatchID, bestMatchName, bestMatchDistance);
                     }
                     else
                     {
                         logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+                        
                     }
-                      // Delete the processed file
                     try
                     {
                         File.Delete(imageFile);
-                        logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
+                       // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
                     }
                     catch (Exception ex)
                     {
                         logCallback?.Invoke($"Error deleting file {Path.GetFileName(imageFile)}: {ex.Message}");
                     }
+                    // Delete the processed file
+
                 }
                 catch (Exception ex)
                 {
@@ -171,6 +167,91 @@ namespace Face_Matcher_UI
                 sw.Stop();
                 logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
             }
+        }
+        private void ProcessAndLogMatch(string bestMatch , float bestDistance, string imageFile, Bitmap bitmap, string resultDir, string tempResultDir, Action<string>? logCallback)
+        {
+            Task.Run(() =>
+            {
+                try
+                {
+                   
+                    int bestMatchID = 0;
+                    string bestMatchName = "";
+                    // Save images
+                    bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                    bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));
+                    //logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+
+                    int hyphenIndex = bestMatch.IndexOf('-');
+                    if (hyphenIndex > 0)
+                    {
+                        string idPart = bestMatch.Substring(0, hyphenIndex);
+                        bestMatchName = bestMatch.Substring(hyphenIndex + 1);
+                        if (int.TryParse(idPart, out int parsedId))
+                        {
+                            bestMatchID = parsedId;
+                        }
+                    }
+
+                    string fileName = Path.GetFileName(imageFile);
+                    int camId = 0;
+                    string frameCaptureTime = "";
+                    // Step 2: Extract parts
+                    // Remove file extension
+                    string nameWithoutExt = Path.GetFileNameWithoutExtension(fileName); // Cam4_frame_20250525_182446_384278
+                    var parts = nameWithoutExt.Split('_');
+                    try
+                    {
+                        if (parts.Length >= 3 && parts[0].StartsWith("Cam"))
+                        {
+                            string camPart = "Cam";                       // "Cam"
+                            string idPart = parts[0].Substring(3);        // "4"
+                            camId = Convert.ToInt32(idPart);
+                           string datePart = $"{parts[2]}_{parts[3]}_{parts[4]}"; // "20250525_182446_384278"
+
+                            // Step 3: Parse datetime
+                            if (DateTime.TryParseExact(datePart, "yyyyMMdd_HHmmss_ffffff",
+                                                       System.Globalization.CultureInfo.InvariantCulture,
+                                                       System.Globalization.DateTimeStyles.None,
+                                                       out DateTime parsedDateTime))
+                            {
+                                frameCaptureTime =Convert.ToString(parsedDateTime);
+                            }
+                            else
+                            {
+                                Console.WriteLine("Failed to parse datetime.");
+                            }
+                        }
+                    }
+                    catch(Exception ex)
+                    {
+
+                    }
+                    
+
+                    // Log to database
+                    InsertMatchFaceLog(
+                        frameCaptureTime,
+                        Path.Combine(resultDir, Path.GetFileName(imageFile)),
+                        camId,
+                        bestMatchID,
+                        bestMatchName,
+                        bestDistance
+                    );
+
+                    // Delete original file
+                   // File.Delete(imageFile);
+                   // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
+                }
+                catch (Exception ex)
+                {
+                    logCallback?.Invoke($"Error during async processing of {Path.GetFileName(imageFile)}: {ex.Message}");
+                }
+                finally
+                {
+                    bitmap.Dispose();
+                }
+            });
         }
 
         public void Draw(Graphics g, Rectangle faceRect, string label)
