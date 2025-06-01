@@ -29,6 +29,8 @@ namespace FaceONNX
 
         public FaceDetector(SessionOptions options, float detectionThreshold = 0.3f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
         {
+            options.AppendExecutionProvider_DML();  // Enable DirectML
+
             _session = new InferenceSession(Resources.yolov5s_face, options);
             DetectionThreshold = detectionThreshold;
             ConfidenceThreshold = confidenceThreshold;
