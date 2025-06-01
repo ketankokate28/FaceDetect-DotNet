@@ -24,10 +24,10 @@ namespace FaceONNX
 
         public static readonly string[] Labels = new[] { "Face" };
 
-        public FaceDetector(float detectionThreshold = 0.3f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
+        public FaceDetector(float detectionThreshold = 0.5f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
             : this(new SessionOptions(), detectionThreshold, confidenceThreshold, nmsThreshold) { }
 
-        public FaceDetector(SessionOptions options, float detectionThreshold = 0.3f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
+        public FaceDetector(SessionOptions options, float detectionThreshold = 0.5f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
         {
             options.AppendExecutionProvider_DML();  // Enable DirectML
 
