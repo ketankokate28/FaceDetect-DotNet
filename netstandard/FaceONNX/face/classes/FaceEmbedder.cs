@@ -32,8 +32,13 @@ namespace FaceONNX
         {
             var options = new SessionOptions();
             options.AppendExecutionProvider_DML(); // ✅ DirectML instead of CUDA
+                                                   // options.AppendExecutionProvider_CPU();
+                                                   // options.AppendExecutionProvider_CUDA();
+            options.EnableMemoryPattern = false;
             var modelPath = Path.Combine(AppContext.BaseDirectory, "recognition_resnet27.onnx");
                 _session = new InferenceSession(modelPath, options);
+           
+
         }
 
         /// <summary>
@@ -48,7 +53,6 @@ namespace FaceONNX
         #endregion
 
         #region Methods
-
         /// <summary>
         /// Returns size of the embedding vector.
         /// </summary>
@@ -92,13 +96,19 @@ namespace FaceONNX
             NamedOnnxValue.CreateFromTensor("input", new DenseTensor<float>(inputData, new[] { 1, 3, 128, 128 }))
         };
            // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(name, t) };
-            using var outputs = _session.Run(inputs);
-            var results = outputs.ToArray();
-            var length = results.Length;
-            var confidences = results[length - 1].AsTensor<float>().ToArray();
+           
+            lock (_sessionLock)
+            {
+                using var outputs = _session.Run(inputs);
+                var results = outputs.ToArray();
+                var length = results.Length;
+                var confidences = results[length - 1].AsTensor<float>().ToArray();
+                return confidences;
+            }
 
-            return confidences;
+            //return confidences;
         }
+
 
         #endregion
 
