@@ -29,6 +29,9 @@ namespace Face_Matcher_UI
         ConcurrentDictionary<string, bool> processedImages = new ConcurrentDictionary<string, bool>();
         CancellationTokenSource cts = new CancellationTokenSource();
         string connectionString = $"Data Source={Path.Combine(AppContext.BaseDirectory, "Database", "face_match.db")};";
+        private ProcessingWorker[] workers;
+        private int workerIndex = 0;
+        private readonly object workerLock = new object(); // to keep thread safety
         public Form1()
         {
             InitializeComponent();
@@ -297,7 +300,17 @@ namespace Face_Matcher_UI
                 ShowImage();
             }
         }
+        private void EnqueueImage(string imagePath)
+        {
+            if (workers == null || workers.Length == 0)
+                return; // workers not initialized
 
+            lock (workerLock)
+            {
+                workers[workerIndex].EnqueueImage(imagePath);
+                workerIndex = (workerIndex + 1) % workers.Length;
+            }
+        }
         private void button1_Click(object sender, EventArgs e)
         {
             if(cachedSuspectEmbeddings.Count <1 || !Directory.Exists(imageDir))
@@ -327,16 +340,33 @@ namespace Face_Matcher_UI
         .Where(IsImage)
         .ToArray();
 
+            //foreach (var img in allImageFiles)
+            //{
+            //    if (!processedImages.ContainsKey(img))
+            //    {
+            //        imageQueue.Enqueue(img);
+            //    }
+            //}
+
+            StartImageWatcher(imageDir);
+            var stopwatch = Stopwatch.StartNew();
+            workers = Enumerable.Range(0, 4)
+    .Select(_ => new ProcessingWorker(cachedSuspectEmbeddings, resultDir, tempResultDir, message =>
+    {
+        txtLog.Invoke((MethodInvoker)(() =>
+            txtLog.AppendText(message + ($"\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds\n"))
+            ));
+    }, cts.Token))
+    .ToArray();
+
             foreach (var img in allImageFiles)
             {
                 if (!processedImages.ContainsKey(img))
                 {
-                    imageQueue.Enqueue(img);
+                    EnqueueImage(img);
                 }
             }
-
-            StartImageWatcher(imageDir);
-            StartProcessingLoop(cachedSuspectEmbeddings);
+            //   StartProcessingLoop(cachedSuspectEmbeddings);
             txtLog.AppendText("Started monitoring and processing...\n");
             //            Task.Run(() =>
             //            {
@@ -443,7 +473,8 @@ namespace Face_Matcher_UI
             {
                 if (IsImage(e.FullPath) && !processedImages.ContainsKey(e.FullPath))
                 {
-                    imageQueue.Enqueue(e.FullPath);
+                    //imageQueue.Enqueue(e.FullPath);
+                    EnqueueImage(e.FullPath);
                     Console.WriteLine($"File created and queued: {e.FullPath}");
                 }
             };
