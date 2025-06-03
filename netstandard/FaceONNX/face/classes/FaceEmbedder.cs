@@ -34,7 +34,7 @@ namespace FaceONNX
             options.AppendExecutionProvider_DML(); // ✅ DirectML instead of CUDA
                                                    // options.AppendExecutionProvider_CPU();
                                                    // options.AppendExecutionProvider_CUDA();
-            options.EnableMemoryPattern = false;
+            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
             var modelPath = Path.Combine(AppContext.BaseDirectory, "recognition_resnet27.onnx");
                 _session = new InferenceSession(modelPath, options);
            
