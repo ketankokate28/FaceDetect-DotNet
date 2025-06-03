@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
+using System.Xml.Linq;
 using UMapx.Visualization;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Timer = System.Windows.Forms.Timer;
@@ -15,6 +16,7 @@ namespace Face_Matcher_UI
     {
         string suspectDir = "";
         string imageDir = "";
+        string basePath = AppDomain.CurrentDomain.BaseDirectory;
         string resultDir = Path.Combine(AppContext.BaseDirectory, "Results");
         string tempResultDir = Path.Combine(AppContext.BaseDirectory, "Results_Temp");
         private string[] imageFiles;
@@ -26,7 +28,7 @@ namespace Face_Matcher_UI
         ConcurrentQueue<string> imageQueue = new ConcurrentQueue<string>();
         ConcurrentDictionary<string, bool> processedImages = new ConcurrentDictionary<string, bool>();
         CancellationTokenSource cts = new CancellationTokenSource();
-        string connectionString = "Data Source=Database/face_match.db";
+        string connectionString = $"Data Source={Path.Combine(AppContext.BaseDirectory, "Database", "face_match.db")};";
         public Form1()
         {
             InitializeComponent();
@@ -74,6 +76,20 @@ namespace Face_Matcher_UI
                                   .ToArray();
             PrecomputeSuspectEmbeddingsAsync(Path.Combine(AppContext.BaseDirectory, "suspects"));
 
+        }
+        private Dictionary<int, string> LoadSuspectList_backup()
+        {
+
+            var suspects = new Dictionary<int, string>();
+
+            for(int i=0;i<56;i++)
+            {
+                var sampleGuid = Guid.NewGuid();
+                suspects.Add(i + 1, sampleGuid.ToString());
+            }
+            //suspects.Add(1, "Ketan");
+            //suspects.Add(2, "Prakash");
+            return suspects;
         }
 
         private Dictionary<int, string> LoadSuspectList()
@@ -355,7 +371,7 @@ namespace Face_Matcher_UI
             //                }));
             //            });
 
-            txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText("\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2} seconds")));
+            txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText("\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2}")));
 
         }
         void StartProcessingLoop(Dictionary<string, float[]> cachedSuspectEmbeddings)
@@ -363,6 +379,8 @@ namespace Face_Matcher_UI
             var matcher = new FaceMatcher();
             List<string> currentBatch = new List<string>();
             var sw = Stopwatch.StartNew();
+            FaceDetector faceDetector = new FaceDetector();
+            FaceEmbedder faceEmbedder = new FaceEmbedder();
 
             Task.Run(() =>
             {
@@ -385,20 +403,20 @@ namespace Face_Matcher_UI
                         //    newItemAdded = true;
                         //}
 
-                        if (currentBatch.Count >= 1000)
+                        if (currentBatch.Count >= 2000)
                             break; // Stop if batch is large enough
                     }
 
                     bool timeToFlush = (DateTime.UtcNow - lastBatchTime).TotalSeconds >= 1;
 
-                    if (currentBatch.Count > 0 && (currentBatch.Count >= 1000 || timeToFlush))
+                    if (currentBatch.Count > 0 && (currentBatch.Count >= 2000 || timeToFlush))
                     {
 
                         matcher.RunBatch(cachedSuspectEmbeddings, currentBatch.ToArray(), resultDir,tempResultDir, message =>
                         {
                             txtLog.Invoke((MethodInvoker)(() =>
                                 txtLog.AppendText(message + $" \nTotal processing time: {sw.Elapsed}")));
-                        });
+                        }, faceDetector,faceEmbedder);
 
                         //foreach (var file in currentBatch)
                         //    processedImages.TryAdd(file, true);
