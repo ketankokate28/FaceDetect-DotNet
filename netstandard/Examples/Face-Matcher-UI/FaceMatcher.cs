@@ -166,7 +166,7 @@ namespace Face_Matcher_UI
                     try
                     {
                         // File.Delete(imageFile);
-                      //  File.Delete(frame.FilePath);
+                      File.Delete(frame.FilePath);
                         // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
                     }
                     catch (Exception ex)

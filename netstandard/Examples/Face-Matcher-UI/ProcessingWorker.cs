@@ -52,8 +52,8 @@ namespace Face_Matcher_UI
         }
         private async Task ProcessLoop()
         {
-            const int MaxBatchSize = 4;
-            const int DelayInterval = 2;
+            const int MaxBatchSize = 8;
+            const int DelayInterval = 10;
 
             var batch = new List<ImageFrame>(MaxBatchSize);
 

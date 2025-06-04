@@ -533,7 +533,7 @@ namespace Face_Matcher_UI
                         SourceId = "Cam1",
                         Image = (Bitmap)compressedBitmap.Clone(),
                         Timestamp = DateTime.UtcNow,
-                        FilePath = ""
+                        FilePath = filePath
                     };
 
                     lock (workerLock)
