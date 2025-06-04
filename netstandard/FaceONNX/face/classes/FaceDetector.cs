@@ -4,6 +4,7 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.IO;
 using System.Linq;
 using UMapx.Core;
 using UMapx.Imaging;
@@ -21,7 +22,7 @@ namespace FaceONNX
         public float DetectionThreshold { get; set; }
         public float ConfidenceThreshold { get; set; }
         public float NmsThreshold { get; set; }
-
+        private static readonly object _sessionLock = new object(); // Add this line ✅
         public static readonly string[] Labels = new[] { "Face" };
 
         public FaceDetector(float detectionThreshold = 0.5f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
@@ -30,8 +31,9 @@ namespace FaceONNX
         public FaceDetector(SessionOptions options, float detectionThreshold = 0.5f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
         {
             options.AppendExecutionProvider_DML();  // Enable DirectML
+            var modelPath = Path.Combine(AppContext.BaseDirectory, "yolov5s-face.onnx");
+           _session = new InferenceSession(modelPath, options);
 
-            _session = new InferenceSession(Resources.yolov5s_face, options);
             DetectionThreshold = detectionThreshold;
             ConfidenceThreshold = confidenceThreshold;
             NmsThreshold = nmsThreshold;
@@ -65,39 +67,43 @@ namespace FaceONNX
 
             var tensor = new DenseTensor<float>(inputArray, new[] { 1, 3, targetSize.Height, targetSize.Width });
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
+            //DenseTensor<float> resultTensor=null;
+            //lock (_sessionLock)
+            //{
+                using var results = _session.Run(inputs);
+              // resultTensor = (DenseTensor<float>)(results.FirstOrDefault()?.AsTensor<float>());
+                 var  resultTensor = (results.FirstOrDefault()?.AsTensor<float>());
+                if (resultTensor == null)
+                    return Array.Empty<FaceDetectionResult>();
 
-            using var results = _session.Run(inputs);
-            var resultTensor = results.FirstOrDefault()?.AsTensor<float>();
-            if (resultTensor == null)
-                return Array.Empty<FaceDetectionResult>();
+                var resultArray = resultTensor.ToArray();
+                int resultCount = resultArray.Length / predictionLength;
 
-            var resultArray = resultTensor.ToArray();
-            int resultCount = resultArray.Length / predictionLength;
+                var detections = new List<float[]>();
 
-            var detections = new List<float[]>();
+                for (int i = 0; i < resultCount; i++)
+                {
+                    var score = resultArray[i * predictionLength + 4];
+                    if (score <= DetectionThreshold)
+                        continue;
 
-            for (int i = 0; i < resultCount; i++)
-            {
-                var score = resultArray[i * predictionLength + 4];
-                if (score <= DetectionThreshold)
-                    continue;
+                    var det = new float[predictionLength];
+                    for (int j = 0; j < predictionLength; j++)
+                        det[j] = resultArray[i * predictionLength + j];
 
-                var det = new float[predictionLength];
-                for (int j = 0; j < predictionLength; j++)
-                    det[j] = resultArray[i * predictionLength + j];
+                    // Convert center x, y, w, h to x1, y1, x2, y2
+                    float cx = det[0], cy = det[1], w = det[2], h = det[3];
+                    det[0] = cx - w / 2;
+                    det[1] = cy - h / 2;
+                    det[2] = cx + w / 2;
+                    det[3] = cy + h / 2;
 
-                // Convert center x, y, w, h to x1, y1, x2, y2
-                float cx = det[0], cy = det[1], w = det[2], h = det[3];
-                det[0] = cx - w / 2;
-                det[1] = cy - h / 2;
-                det[2] = cx + w / 2;
-                det[3] = cy + h / 2;
+                    detections.Add(det);
+                }
 
-                detections.Add(det);
-            }
-
-            var filtered = NonMaxSuppressionExensions.AgnosticNMSFiltration(detections, NmsThreshold);
-            return PostProcess(filtered, originalWidth, originalHeight, targetSize, yoloVectorLength, classCount);
+                var filtered = NonMaxSuppressionExensions.AgnosticNMSFiltration(detections, NmsThreshold);
+                return PostProcess(filtered, originalWidth, originalHeight, targetSize, yoloVectorLength, classCount);
+            //}
         }
 
         private FaceDetectionResult[] PostProcess(List<float[]> detections, int originalWidth, int originalHeight, Size resizedSize, int yoloVectorLength, int classCount)

@@ -3,6 +3,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
+using static Face_Matcher_UI.Form1;
 
 namespace Face_Matcher_UI
 {
@@ -14,7 +15,8 @@ namespace Face_Matcher_UI
         private readonly CancellationToken _token;
         private readonly Task _processingTask;
 
-        private readonly BlockingCollection<string> _imageQueue = new();
+       // private readonly BlockingCollection<string> _imageQueue = new();
+        private readonly BlockingCollection<ImageFrame> _imageQueue = new();
 
         private readonly Dictionary<string, float[]> _suspectEmbeddings;
         private readonly string _resultDir;
@@ -28,6 +30,8 @@ namespace Face_Matcher_UI
             Action<string> logCallback,
             CancellationToken token)
         {
+           // _faceDetector = sharedFaceDetector;
+           // _faceEmbedder = sharedFaceEmbedder;
             _faceDetector = new FaceDetector();
             _faceEmbedder = new FaceEmbedder();
             _faceMatcher = new FaceMatcher();
@@ -41,67 +45,135 @@ namespace Face_Matcher_UI
             _processingTask = Task.Run(ProcessLoop, token);
         }
 
-        public void EnqueueImage(string imageFile)
+        
+        public void EnqueueImage(ImageFrame frame)
         {
-            _imageQueue.Add(imageFile);
+            _imageQueue.Add(frame);
         }
         private async Task ProcessLoop()
         {
-            while (!_token.IsCancellationRequested)
-            {
-                if (_imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(500)))
-                {
-                    try
-                    {
-                        _faceMatcher.RunBatch(_suspectEmbeddings, new[] { imageFile }, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logCallback?.Invoke($"Error processing file {imageFile}: {ex.Message}");
-                    }
-                }
-            }
-        }
-        private async Task ProcessLoop_backup()
-        {
-            List<string> currentBatch = new();
+            const int MaxBatchSize = 8;
+            const int DelayInterval = 10;
 
-            DateTime lastBatchTime = DateTime.UtcNow;
+            var batch = new List<ImageFrame>(MaxBatchSize);
 
             while (!_token.IsCancellationRequested)
             {
-                bool newItemAdded = false;
-
-                while (_imageQueue.TryTake(out var imageFile))
+                try
                 {
-                    currentBatch.Add(imageFile);
-                    newItemAdded = true;
+                    while (batch.Count < MaxBatchSize &&
+                           _imageQueue.TryTake(out var frame, TimeSpan.FromMilliseconds(DelayInterval)))
+                    {
+                        batch.Add(frame);
+                    }
 
-                    if (currentBatch.Count >= 2000)
-                        break;
+                    if (batch.Count > 0)
+                    {
+                        _faceMatcher.RunBatch(_suspectEmbeddings, batch, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                        batch.Clear();
+                    }
                 }
-
-                bool timeToFlush = (DateTime.UtcNow - lastBatchTime).TotalSeconds >= 1;
-
-                if (currentBatch.Count > 0 && (currentBatch.Count >= 2000 || timeToFlush))
+                catch (Exception ex)
                 {
-                    _faceMatcher.RunBatch(_suspectEmbeddings, currentBatch.ToArray(), _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
-                    currentBatch.Clear();
-                    lastBatchTime = DateTime.UtcNow;
+                    _logCallback?.Invoke($"Worker loop error: {ex.Message}");
                 }
-
-                if (!newItemAdded)
-                    await Task.Delay(500);
             }
         }
+        //public void EnqueueImage(string imageFile)
+        //{
+        //    _imageQueue.Add(imageFile);
+        //}
 
-        public void Dispose()
+        //private async Task ProcessLoop()
+        //{
+        //    const int MaxBatchSize = 16;
+        //    const int DelayInterval = 100; // ms
+
+        //    var batch = new List<string>(MaxBatchSize);
+
+        //    while (!_token.IsCancellationRequested)
+        //    {
+        //        try
+        //        {
+        //            while (batch.Count < MaxBatchSize &&
+        //                   _imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(DelayInterval)))
+        //            {
+        //                batch.Add(imageFile);
+        //            }
+
+        //            if (batch.Count > 0)
+        //            {
+        //                _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
+        //                    _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+        //                batch.Clear();
+        //            }
+        //        }
+        //        catch (Exception ex)
+        //        {
+        //            _logCallback?.Invoke($"Worker loop error: {ex.Message}");
+        //        }
+        //    }
+        //}
+
+        //private async Task ProcessLoop_bakup_Latest()
+        //{
+        //    while (!_token.IsCancellationRequested)
+        //    {
+        //        if (_imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(500)))
+        //        {
+        //            try
+        //            {
+        //                _faceMatcher.RunBatch(_suspectEmbeddings, new[] { imageFile }, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                _logCallback?.Invoke($"Error processing file {imageFile}: {ex.Message}");
+        //            }
+        //        }
+        //    }
+        //}
+     
+
+        public async void Dispose()
         {
             _imageQueue.CompleteAdding();
-            _processingTask.Wait();
+            await _processingTask.ConfigureAwait(false); // If you make Dispose async
             _faceEmbedder?.Dispose();
             // Dispose other resources if needed
         }
+
+        //private async Task ProcessLoop_backup()
+        //{
+        //    List<string> currentBatch = new();
+
+        //    DateTime lastBatchTime = DateTime.UtcNow;
+
+        //    while (!_token.IsCancellationRequested)
+        //    {
+        //        bool newItemAdded = false;
+
+        //        while (_imageQueue.TryTake(out var imageFile))
+        //        {
+        //            currentBatch.Add(imageFile);
+        //            newItemAdded = true;
+
+        //            if (currentBatch.Count >= 2000)
+        //                break;
+        //        }
+
+        //        bool timeToFlush = (DateTime.UtcNow - lastBatchTime).TotalSeconds >= 1;
+
+        //        if (currentBatch.Count > 0 && (currentBatch.Count >= 2000 || timeToFlush))
+        //        {
+        //            _faceMatcher.RunBatch(_suspectEmbeddings, currentBatch.ToArray(), _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+        //            currentBatch.Clear();
+        //            lastBatchTime = DateTime.UtcNow;
+        //        }
+
+        //        if (!newItemAdded)
+        //            await Task.Delay(500);
+        //    }
+        //}
     }
 
 }

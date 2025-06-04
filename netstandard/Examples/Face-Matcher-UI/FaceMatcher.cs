@@ -14,6 +14,8 @@ using System.Xml.Linq;
 using UMapx.Visualization;
 using System.Windows.Forms;
 using System.Drawing.Drawing2D;
+using static Face_Matcher_UI.Form1;
+using System.Drawing.Imaging;
 
 namespace Face_Matcher_UI
 {
@@ -64,10 +66,10 @@ namespace Face_Matcher_UI
 
             return result;
         }
-     
+
         public void RunBatch(
              Dictionary<string, float[]> suspectEmbeddings,
-             string[] imageFiles,
+             List<ImageFrame> frames,
              string resultDir,
              string tempResultDir,
              Action<string> logCallback, FaceDetector faceDetector, FaceEmbedder faceEmbedder)
@@ -81,40 +83,29 @@ namespace Face_Matcher_UI
                 Transparency = 0
             };
             var processingTasks = new List<Task>();
-            foreach (var imageFile in imageFiles)
+            foreach (var frame in frames)
             {
                 var sw = Stopwatch.StartNew();
                 try
                 {
-                    using var bitmap = LoadBitmapUnlocked(imageFile);
-                    using var graphics = Graphics.FromImage(bitmap);
+                   // using var bitmap = LoadBitmapUnlocked(imageFile);
+                    using var graphics = Graphics.FromImage(frame.Image);
 
 
-                    //var sw1 = Stopwatch.StartNew();
-                    var groupFaces = faceDetector.Forward(bitmap);
-                    //sw1.Stop();
-                    //logCallback?.Invoke($"Image detects in {sw1.ElapsedMilliseconds} ms");
+                    var sw1 = Stopwatch.StartNew();
+                    var groupFaces = faceDetector.Forward(frame.Image);
+                    sw1.Stop();
+                    logCallback?.Invoke($"Image detects in {sw1.ElapsedMilliseconds} ms");
                     bool matchedAny = false;
                     int bestMatchID = 0;
                     string bestMatchName = "";
                     float bestMatchDistance = 0.0f;
                     foreach (var face in groupFaces)
                     {
-                        using var crop = CropFace(bitmap, face.Box);
+                        using var crop = CropFace(frame.Image, face.Box);
                         var queryAugmentations = GenerateAugmentations(crop);
-
-                        //var queryEmbeddings = new List<float[]>();
-                        //foreach (var img in queryAugmentations)
-                        //{
-                        //    using (img)
-                        //    {
-                        //        var sw2 = Stopwatch.StartNew();
-                        //        queryEmbeddings.Add(faceEmbedder.Forward(img));
-                        //        sw2.Stop();
-                        //        logCallback?.Invoke($"faceEmbedder in {sw2.ElapsedMilliseconds} ms");
-                        //    }
-                        //}
                         var embeddingArray = new float[queryAugmentations.Count][];
+                        var sw2 = Stopwatch.StartNew();
                         Parallel.For(0, queryAugmentations.Count, i =>
                         {
                             using var img = queryAugmentations[i];
@@ -122,7 +113,8 @@ namespace Face_Matcher_UI
                         });
 
                         var queryEmbeddings = embeddingArray.ToList();
-
+                        sw2.Stop();
+                        logCallback?.Invoke($"faceEmbedder in {sw2.ElapsedMilliseconds} ms");
                         var averagedQuery = AverageEmbedding(queryEmbeddings);
                         var bestMatch = suspectEmbeddings
     .AsParallel()
@@ -142,53 +134,173 @@ namespace Face_Matcher_UI
                             graphics.DrawString(bestMatch.Name + " " + Math.Round(similarityPercent) + "%", painter.TextFont, Brushes.White, nameBox.Location);
                             logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
-                            Bitmap clonedBitmap = (Bitmap)bitmap.Clone(); // Clone for background use
+                          //  Bitmap clonedBitmap = (Bitmap)bitmap.Clone(); // Clone for background use
                                                                           //originalBitmap.Dispose();
                                                                           // ProcessAndLogMatch(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback);
 
-                                  processingTasks.Add(
-                            ProcessAndLogMatchAsync(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
-                      );
+                            //            processingTasks.Add(
+                            //      ProcessAndLogMatchAsync(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
+                            //);
                         }
                     }
 
                     if (matchedAny)
                     {
+                        // File.Delete(imageFile);
+                        string timestamp = frame.Timestamp.ToString("yyyyMMdd_HHmmss_fff"); // safe format
+                        string fileName = $"{frame.SourceId}_{timestamp}.jpg";
 
-                      // bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
-                      //bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));                       
+                        frame.Image.Save(Path.Combine(resultDir, fileName), ImageFormat.Jpeg);
+                        frame.Image.Save(Path.Combine(tempResultDir, fileName), ImageFormat.Jpeg);
+
+
                         //logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
                         //InsertMatchFaceLog("", Path.Combine(resultDir, Path.GetFileName(imageFile)), 1, bestMatchID, bestMatchName, bestMatchDistance);
                     }
                     else
                     {
-                        File.Delete(imageFile);
-                        logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+                        //File.Delete(imageFile);
+                        logCallback?.Invoke($"No match found in {Path.GetFileName(frame.SourceId + "_" + frame.Timestamp)}");
 
                     }
                     try
                     {
-                       // File.Delete(imageFile);
+                        // File.Delete(imageFile);
+                      //  File.Delete(frame.FilePath);
                         // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
                     }
                     catch (Exception ex)
                     {
-                        logCallback?.Invoke($"Error deleting file {Path.GetFileName(imageFile)}: {ex.Message}");
+                        logCallback?.Invoke($"Error deleting file {Path.GetFileName(frame.SourceId + "_" + frame.Timestamp)}: {ex.Message}");
                     }
-                    bitmap.Dispose();
+                    frame.Image.Dispose();
                 }
                 catch (Exception ex)
                 {
-                    logCallback?.Invoke($"Error processing image {imageFile}: {ex.Message}");
+                    logCallback?.Invoke($"Error processing image {frame.SourceId + "_" + frame.Timestamp}: {ex.Message}");
                 }
-               
+
 
                 sw.Stop();
-                logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+                logCallback?.Invoke($"Image {Path.GetFileName(frame.SourceId + "_" + frame.Timestamp)} processed in {sw.ElapsedMilliseconds} ms");
             }
         }
 
-       
+
+        //    public void RunBatch(
+        //         Dictionary<string, float[]> suspectEmbeddings,
+        //         string[] imageFiles,
+        //         string resultDir,
+        //         string tempResultDir,
+        //         Action<string> logCallback, FaceDetector faceDetector, FaceEmbedder faceEmbedder)
+        //    {
+        //        //using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 15,), Transparency = 0 };
+
+        //        using var painter = new Painter()
+        //        {
+        //            BoxPen = new Pen(Color.Yellow, 4), // Thinner and more modern
+        //            TextFont = new Font("Segoe UI", 10, FontStyle.Bold), // Clearer system font
+        //            Transparency = 0
+        //        };
+        //        var processingTasks = new List<Task>();
+        //        foreach (var imageFile in imageFiles)
+        //        {
+        //            var sw = Stopwatch.StartNew();
+        //            try
+        //            {
+        //                using var bitmap = LoadBitmapUnlocked(imageFile);
+        //                using var graphics = Graphics.FromImage(bitmap);
+
+
+        //                var sw1 = Stopwatch.StartNew();
+        //                var groupFaces = faceDetector.Forward(bitmap);
+        //                sw1.Stop();
+        //                logCallback?.Invoke($"Image detects in {sw1.ElapsedMilliseconds} ms");
+        //                bool matchedAny = false;
+        //                int bestMatchID = 0;
+        //                string bestMatchName = "";
+        //                float bestMatchDistance = 0.0f;
+        //                foreach (var face in groupFaces)
+        //                {
+        //                    using var crop = CropFace(bitmap, face.Box);
+        //                    var queryAugmentations = GenerateAugmentations(crop);
+        //                    var embeddingArray = new float[queryAugmentations.Count][];
+        //                    var sw2 = Stopwatch.StartNew();
+        //                    Parallel.For(0, queryAugmentations.Count, i =>
+        //                    {
+        //                        using var img = queryAugmentations[i];
+        //                        embeddingArray[i] = faceEmbedder.Forward(img);
+        //                    });
+
+        //                    var queryEmbeddings = embeddingArray.ToList();
+        //                    sw2.Stop();
+        //                    logCallback?.Invoke($"faceEmbedder in {sw2.ElapsedMilliseconds} ms");
+        //                    var averagedQuery = AverageEmbedding(queryEmbeddings);
+        //                    var bestMatch = suspectEmbeddings
+        //.AsParallel()
+        //.Select(kvp => new {
+        //    Name = kvp.Key,
+        //    Distance = CosineDistanceSIMD(averagedQuery, kvp.Value)
+        //})
+        //.OrderBy(kvp => kvp.Distance)
+        //.First();
+
+
+        //                    if (bestMatch.Distance < MatchThreshold)
+        //                    {
+        //                        double similarityPercent = (1.0 - bestMatch.Distance) * 100.0;
+        //                        var nameBox = new Rectangle(face.Box.X, face.Box.Y - 20, Math.Max(face.Box.Width, 150), 20);
+        //                        painter.Draw(graphics, new PaintData { Rectangle = face.Box });
+        //                        graphics.DrawString(bestMatch.Name + " " + Math.Round(similarityPercent) + "%", painter.TextFont, Brushes.White, nameBox.Location);
+        //                        logCallback?.Invoke($"Matched suspect: {bestMatch} with distance {bestMatch.Distance:F3}");
+        //                        matchedAny = true;
+        //                        Bitmap clonedBitmap = (Bitmap)bitmap.Clone(); // Clone for background use
+        //                                                                      //originalBitmap.Dispose();
+        //                                                                      // ProcessAndLogMatch(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback);
+
+        //                  //            processingTasks.Add(
+        //                  //      ProcessAndLogMatchAsync(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
+        //                  //);
+        //                    }
+        //                }
+
+        //                if (matchedAny)
+        //                {
+        //                    File.Delete(imageFile);
+        //                    bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+        //                  bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));                       
+        //                    //logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+        //                    //InsertMatchFaceLog("", Path.Combine(resultDir, Path.GetFileName(imageFile)), 1, bestMatchID, bestMatchName, bestMatchDistance);
+        //                }
+        //                else
+        //                {
+        //                    File.Delete(imageFile);
+        //                    logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+
+        //                }
+        //                try
+        //                {
+        //                   // File.Delete(imageFile);
+        //                    // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
+        //                }
+        //                catch (Exception ex)
+        //                {
+        //                    logCallback?.Invoke($"Error deleting file {Path.GetFileName(imageFile)}: {ex.Message}");
+        //                }
+        //                bitmap.Dispose();
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                logCallback?.Invoke($"Error processing image {imageFile}: {ex.Message}");
+        //            }
+
+
+        //            sw.Stop();
+        //            logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+        //        }
+        //    }
+
+
         private async Task ProcessAndLogMatchAsync(string bestMatch, float bestDistance, string imageFile, Bitmap bitmap, string resultDir, string tempResultDir, Action<string>? logCallback)
         {
             try
@@ -260,18 +372,17 @@ namespace Face_Matcher_UI
                         bestDistance
                     );
 
-                    // Delete original file
-                     File.Delete(imageFile);
                     // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
                 });
             }
                 catch (Exception ex)
                 {
                     logCallback?.Invoke($"Error during async processing of {Path.GetFileName(imageFile)}: {ex.Message}");
-                }
+            }
                 finally
                 {
-                    bitmap.Dispose();
+                File.Delete(imageFile);
+                bitmap.Dispose();
                 }
         }
 

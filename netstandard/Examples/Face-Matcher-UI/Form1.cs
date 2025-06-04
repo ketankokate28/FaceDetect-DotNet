@@ -1,7 +1,9 @@
 using FaceONNX;
 using Microsoft.Data.Sqlite;
+using OpenCvSharp;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Drawing.Imaging;
 using System.Numerics;
 using System.Text.RegularExpressions;
 using System.Windows.Forms;
@@ -18,6 +20,7 @@ namespace Face_Matcher_UI
         string imageDir = "";
         string basePath = AppDomain.CurrentDomain.BaseDirectory;
         string resultDir = Path.Combine(AppContext.BaseDirectory, "Results");
+        string framesDir = Path.Combine(AppContext.BaseDirectory, "frames");
         string tempResultDir = Path.Combine(AppContext.BaseDirectory, "Results_Temp");
         private string[] imageFiles;
         private int currentIndex = 0;
@@ -80,7 +83,7 @@ namespace Face_Matcher_UI
             PrecomputeSuspectEmbeddingsAsync(Path.Combine(AppContext.BaseDirectory, "suspects"));
 
         }
-        private Dictionary<int, string> LoadSuspectList_backup()
+        private Dictionary<int, string> LoadSuspectList()
         {
 
             var suspects = new Dictionary<int, string>();
@@ -95,7 +98,7 @@ namespace Face_Matcher_UI
             return suspects;
         }
 
-        private Dictionary<int, string> LoadSuspectList()
+        private Dictionary<int, string> LoadSuspectList_backup()
         {
             var suspects = new Dictionary<int, string>();
 
@@ -300,14 +303,42 @@ namespace Face_Matcher_UI
                 ShowImage();
             }
         }
-        private void EnqueueImage(string imagePath)
+
+        //private void EnqueueImage(string imagePath)
+        //{
+        //    if (workers == null || workers.Length == 0)
+        //        return; // workers not initialized
+
+        //    lock (workerLock)
+        //    {
+        //        workers[workerIndex].EnqueueImage(imagePath);
+        //        workerIndex = (workerIndex + 1) % workers.Length;
+        //    }
+        //}
+    
+        public class ImageFrame
+        {
+            public string SourceId { get; set; }      // Camera or Video name
+            public Bitmap Image { get; set; }         // Bitmap of the frame
+            public DateTime Timestamp { get; set; }   // Capture time
+            public string FilePath { get; set; }
+        }
+        private void EnqueueImage(Bitmap bitmap, string sourceId,string filepath)
         {
             if (workers == null || workers.Length == 0)
                 return; // workers not initialized
 
+            var imageFrame = new ImageFrame
+            {
+                SourceId = sourceId,
+                Image = (Bitmap)bitmap.Clone(), // Clone to avoid shared state issues
+                Timestamp = DateTime.UtcNow,
+                FilePath = filepath
+            };
+
             lock (workerLock)
             {
-                workers[workerIndex].EnqueueImage(imagePath);
+                workers[workerIndex].EnqueueImage(imageFrame);
                 workerIndex = (workerIndex + 1) % workers.Length;
             }
         }
@@ -336,9 +367,12 @@ namespace Face_Matcher_UI
                 MessageBox.Show("Please load suspect embeddings first.");
                 return;
             }
-            var allImageFiles = Directory.GetFiles(imageDir, "*.*")
-        .Where(IsImage)
-        .ToArray();
+            var allImageFiles = Directory.GetFiles(imageDir)
+     .Where(f => IsImage(f) && (f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) || f.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)))
+     .ToArray();
+
+            var allVideosFiles = Directory.GetFiles(imageDir, "*.mp4*")
+    .ToArray();
 
             //foreach (var img in allImageFiles)
             //{
@@ -347,6 +381,9 @@ namespace Face_Matcher_UI
             //        imageQueue.Enqueue(img);
             //    }
             //}
+
+            //var sharedDetector = new FaceDetector();
+            //var sharedEmbedder = new FaceEmbedder();
 
             StartImageWatcher(imageDir);
             var stopwatch = Stopwatch.StartNew();
@@ -359,13 +396,24 @@ namespace Face_Matcher_UI
     }, cts.Token))
     .ToArray();
 
-            foreach (var img in allImageFiles)
-            {
-                if (!processedImages.ContainsKey(img))
-                {
-                    EnqueueImage(img);
-                }
-            }
+            //foreach (var img in allImageFiles)
+            //{
+            //    if (!processedImages.ContainsKey(img))
+            //    {
+            //        EnqueueImage(img);
+            //    }
+            //}
+
+            //foreach (var img in allImageFiles)
+            //{
+            //    if (!processedImages.ContainsKey(img))
+            //    {
+            //        var bitmap = new Bitmap(img);
+            //        EnqueueImage(bitmap, "Camera01");
+            //    }
+            //}
+            LoadImagesAsync(allImageFiles,allVideosFiles);
+
             //   StartProcessingLoop(cachedSuspectEmbeddings);
             txtLog.AppendText("Started monitoring and processing...\n");
             //            Task.Run(() =>
@@ -404,64 +452,205 @@ namespace Face_Matcher_UI
             txtLog.Invoke((MethodInvoker)(() => txtLog.AppendText("\nTotal processing time: {stopwatch.Elapsed.TotalSeconds:F2}")));
 
         }
-        void StartProcessingLoop(Dictionary<string, float[]> cachedSuspectEmbeddings)
+        private async void LoadImagesAsync(string[] allImageFiles, string[] allVideosFiles)
         {
-            var matcher = new FaceMatcher();
-            List<string> currentBatch = new List<string>();
-            var sw = Stopwatch.StartNew();
-            FaceDetector faceDetector = new FaceDetector();
-            FaceEmbedder faceEmbedder = new FaceEmbedder();
-
-            Task.Run(() =>
+            if (allVideosFiles.Length > 0)
             {
-               
+                await StartMultipleVideoFeedsAsync(allVideosFiles);
+            }
+            else
+            {
 
-                DateTime lastBatchTime = DateTime.UtcNow;
-
-                while (!cts.Token.IsCancellationRequested)
+                await Task.Run(() =>
                 {
-                 
-                    bool newItemAdded = false;
-
-                    while (imageQueue.TryDequeue(out string imageFile))
+                    foreach (var img in allImageFiles)
                     {
-                        currentBatch.Add(imageFile);
-                        newItemAdded = true;
-                        //if (!processedImages.ContainsKey(imageFile))
-                        //{
-                        //    currentBatch.Add(imageFile);
-                        //    newItemAdded = true;
-                        //}
-
-                        if (currentBatch.Count >= 2000)
-                            break; // Stop if batch is large enough
-                    }
-
-                    bool timeToFlush = (DateTime.UtcNow - lastBatchTime).TotalSeconds >= 1;
-
-                    if (currentBatch.Count > 0 && (currentBatch.Count >= 2000 || timeToFlush))
-                    {
-
-                        matcher.RunBatch(cachedSuspectEmbeddings, currentBatch.ToArray(), resultDir,tempResultDir, message =>
+                        if (!processedImages.ContainsKey(img))
                         {
-                            txtLog.Invoke((MethodInvoker)(() =>
-                                txtLog.AppendText(message + $" \nTotal processing time: {sw.Elapsed}")));
-                        }, faceDetector,faceEmbedder);
-
-                        //foreach (var file in currentBatch)
-                        //    processedImages.TryAdd(file, true);
-
-                        currentBatch.Clear();
-                        lastBatchTime = DateTime.UtcNow;
+                            try
+                            {
+                                using (var temp = new Bitmap(img))
+                                {
+                                    var bitmap = new Bitmap(temp);
+                                    EnqueueImage(bitmap, "Camera01", img);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Error loading image {img}: {ex.Message}");
+                            }
+                        }
                     }
+                });
+            }
+        }
+        private async Task StartVideoFeedAsync(string videoPath, int workerIndex)
+        {
+            if (workers == null || workers.Length == 0)
+                return;
 
-                    if (!newItemAdded)
-                        Thread.Sleep(500); // Avoid busy looping if queue is empty
+            await Task.Run(() =>
+            {
+                var capture = new OpenCvSharp.VideoCapture(videoPath);
+                if (!capture.IsOpened())
+                {
+                    Invoke(() => txtLog.AppendText($"\nFailed to open video: {videoPath}"));
+                    return;
                 }
-            }, cts.Token);
+
+                var frame = new OpenCvSharp.Mat();
+                int localWorkerIndex = workerIndex; // Use provided worker index
+                int frameCount = 0;
+
+                double videoFps = capture.Fps > 0 ? capture.Fps : 30;
+                int totalFrames = capture.FrameCount;
+                int frameStep = (int)videoFps; // 1 frame per second
+
+                for (int currentFrame = 0; currentFrame < totalFrames; currentFrame += frameStep)
+                {
+                    capture.Set(OpenCvSharp.VideoCaptureProperties.PosFrames, currentFrame);
+
+                    if (!capture.Read(frame))
+                        break;
+
+                    using var bitmap = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(frame);
+                    using var originalBitmap = (Bitmap)bitmap.Clone();
+
+                    var jpegStream = new MemoryStream();
+                    var encoder = GetEncoder(ImageFormat.Jpeg);
+                    var encoderParams = new EncoderParameters(1);
+                    encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 50L);
+                    originalBitmap.Save(jpegStream, encoder, encoderParams);
+
+                    Guid g = Guid.NewGuid();
+                    var filePath = Path.Combine(framesDir, g.ToString() + ".jpg");
+                    File.WriteAllBytes(filePath, jpegStream.ToArray());
+
+                    jpegStream.Position = 0;
+                    using var compressedBitmap = new Bitmap(jpegStream);
+
+                    var imageFrame = new ImageFrame
+                    {
+                        SourceId = "Cam1",
+                        Image = (Bitmap)compressedBitmap.Clone(),
+                        Timestamp = DateTime.UtcNow,
+                        FilePath = ""
+                    };
+
+                    lock (workerLock)
+                    {
+                        workers[localWorkerIndex].EnqueueImage(imageFrame);
+                        // localWorkerIndex stays fixed per video/worker here
+                        frameCount++;
+                    }
+                }
+
+                capture.Release();
+
+                Invoke(() => txtLog.AppendText($"\nTotal frames pushed to queue for video {videoPath}: {frameCount}"));
+            });
+        }
+        private async Task StartMultipleVideoFeedsAsync(string[] videoPaths)
+        {
+            if (videoPaths == null || videoPaths.Length == 0)
+                return;
+
+            var tasks = new List<Task>();
+
+            for (int i = 0; i < videoPaths.Length; i++)
+            {
+                int workerIndex = i % workers.Length; // Distribute videos across workers
+                string videoPath = videoPaths[i];
+
+                tasks.Add(StartVideoFeedAsync(videoPath, workerIndex));
+            }
+
+            await Task.WhenAll(tasks);
         }
 
+
+        private ImageCodecInfo GetEncoder(ImageFormat format)
+        {
+            return ImageCodecInfo.GetImageDecoders()
+                                 .FirstOrDefault(codec => codec.FormatID == format.Guid);
+        }
+        //void StartProcessingLoop(Dictionary<string, float[]> cachedSuspectEmbeddings)
+        //{
+        //    var matcher = new FaceMatcher();
+        //    List<string> currentBatch = new List<string>();
+        //    var sw = Stopwatch.StartNew();
+        //    FaceDetector faceDetector = new FaceDetector();
+        //    FaceEmbedder faceEmbedder = new FaceEmbedder();
+
+        //    Task.Run(() =>
+        //    {
+
+
+        //        DateTime lastBatchTime = DateTime.UtcNow;
+
+        //        while (!cts.Token.IsCancellationRequested)
+        //        {
+
+        //            bool newItemAdded = false;
+
+        //            while (imageQueue.TryDequeue(out string imageFile))
+        //            {
+        //                currentBatch.Add(imageFile);
+        //                newItemAdded = true;
+        //                //if (!processedImages.ContainsKey(imageFile))
+        //                //{
+        //                //    currentBatch.Add(imageFile);
+        //                //    newItemAdded = true;
+        //                //}
+
+        //                if (currentBatch.Count >= 2000)
+        //                    break; // Stop if batch is large enough
+        //            }
+
+        //            bool timeToFlush = (DateTime.UtcNow - lastBatchTime).TotalSeconds >= 1;
+
+        //            if (currentBatch.Count > 0 && (currentBatch.Count >= 2000 || timeToFlush))
+        //            {
+
+        //                matcher.RunBatch(cachedSuspectEmbeddings, currentBatch.ToArray(), resultDir,tempResultDir, message =>
+        //                {
+        //                    txtLog.Invoke((MethodInvoker)(() =>
+        //                        txtLog.AppendText(message + $" \nTotal processing time: {sw.Elapsed}")));
+        //                }, faceDetector,faceEmbedder);
+
+        //                //foreach (var file in currentBatch)
+        //                //    processedImages.TryAdd(file, true);
+
+        //                currentBatch.Clear();
+        //                lastBatchTime = DateTime.UtcNow;
+        //            }
+
+        //            if (!newItemAdded)
+        //                Thread.Sleep(500); // Avoid busy looping if queue is empty
+        //        }
+        //    }, cts.Token);
+        //}
+
         private FileSystemWatcher watcher1;
+        //void StartImageWatcher(string imageDir)
+        //{
+        //    watcher1 = new FileSystemWatcher(imageDir);
+        //    watcher1.IncludeSubdirectories = false;
+        //    watcher1.Filter = "*.*";
+        //    watcher1.NotifyFilter = NotifyFilters.FileName | NotifyFilters.CreationTime;
+
+        //    watcher1.Created += (s, e) =>
+        //    {
+        //        if (IsImage(e.FullPath) && !processedImages.ContainsKey(e.FullPath))
+        //        {
+        //            //imageQueue.Enqueue(e.FullPath);
+        //            EnqueueImage(e.FullPath);
+        //            Console.WriteLine($"File created and queued: {e.FullPath}");
+        //        }
+        //    };
+
+        //    watcher1.EnableRaisingEvents = true;
+        //}
         void StartImageWatcher(string imageDir)
         {
             watcher1 = new FileSystemWatcher(imageDir);
@@ -474,7 +663,8 @@ namespace Face_Matcher_UI
                 if (IsImage(e.FullPath) && !processedImages.ContainsKey(e.FullPath))
                 {
                     //imageQueue.Enqueue(e.FullPath);
-                    EnqueueImage(e.FullPath);
+                    var bitmap = new Bitmap(e.FullPath);
+                    EnqueueImage(bitmap, "Camera01", e.FullPath);
                     Console.WriteLine($"File created and queued: {e.FullPath}");
                 }
             };

@@ -34,11 +34,9 @@ namespace FaceONNX
             options.AppendExecutionProvider_DML(); // ✅ DirectML instead of CUDA
                                                    // options.AppendExecutionProvider_CPU();
                                                    // options.AppendExecutionProvider_CUDA();
-            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+              
             var modelPath = Path.Combine(AppContext.BaseDirectory, "recognition_resnet27.onnx");
-                _session = new InferenceSession(modelPath, options);
-           
-
+            _session = new InferenceSession(modelPath, options);
         }
 
         /// <summary>
@@ -95,16 +93,33 @@ namespace FaceONNX
         {
             NamedOnnxValue.CreateFromTensor("input", new DenseTensor<float>(inputData, new[] { 1, 3, 128, 128 }))
         };
-           // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(name, t) };
-           
+            // var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(name, t) };
+
+            IReadOnlyCollection<DisposableNamedOnnxValue> outputs;
+
             lock (_sessionLock)
             {
-                using var outputs = _session.Run(inputs);
-                var results = outputs.ToArray();
-                var length = results.Length;
-                var confidences = results[length - 1].AsTensor<float>().ToArray();
-                return confidences;
+                outputs = _session.Run(inputs);
             }
+            var results = outputs.ToArray();  // Convert to array if needed
+            var length = results.Length;
+            var confidences = results[length - 1].AsTensor<float>().ToArray();
+
+            // Clean up ONNX outputs
+            foreach (var output in outputs)
+            {
+                output.Dispose();
+            }
+
+            return confidences;
+            //lock (_sessionLock)
+            //{
+            //    using var outputs = _session.Run(inputs);
+            //    var results = outputs.ToArray();
+            //    var length = results.Length;
+            //    var confidences = results[length - 1].AsTensor<float>().ToArray();
+            //    return confidences;
+            //}
 
             //return confidences;
         }
