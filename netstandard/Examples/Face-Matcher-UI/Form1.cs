@@ -489,7 +489,7 @@ namespace Face_Matcher_UI
             if (workers == null || workers.Length == 0)
                 return;
 
-            await Task.Run(() =>
+            await Task.Run(async () =>
             {
                 var capture = new OpenCvSharp.VideoCapture(videoPath);
                 if (!capture.IsOpened())
@@ -499,18 +499,17 @@ namespace Face_Matcher_UI
                 }
 
                 var frame = new OpenCvSharp.Mat();
-                int localWorkerIndex = workerIndex; // Use provided worker index
                 int frameCount = 0;
 
-                double videoFps = capture.Fps > 0 ? capture.Fps : 30;
-                int totalFrames = capture.FrameCount;
-                int frameStep = (int)videoFps; // 1 frame per second
+                double fps = capture.Fps > 0 ? capture.Fps : 30;
+                double durationSec = capture.FrameCount / fps;
+                int frameInterval = (int)(fps);  // Read 1 frame per second
 
-                for (int currentFrame = 0; currentFrame < totalFrames; currentFrame += frameStep)
+                for (int currentFrame = 0; currentFrame < capture.FrameCount; currentFrame += frameInterval)
                 {
                     capture.Set(OpenCvSharp.VideoCaptureProperties.PosFrames, currentFrame);
 
-                    if (!capture.Read(frame))
+                    if (!capture.Read(frame) || frame.Empty())
                         break;
 
                     using var bitmap = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(frame);
@@ -539,17 +538,18 @@ namespace Face_Matcher_UI
 
                     lock (workerLock)
                     {
-                        workers[localWorkerIndex].EnqueueImage(imageFrame);
-                        // localWorkerIndex stays fixed per video/worker here
+                        workers[workerIndex].EnqueueImage(imageFrame);
                         frameCount++;
                     }
+
+                    await Task.Delay(1000); // wait for 1 second
                 }
 
                 capture.Release();
-
                 Invoke(() => txtLog.AppendText($"\nTotal frames pushed to queue for video {videoPath}: {frameCount}"));
             });
         }
+
         private async Task StartMultipleVideoFeedsAsync(string[] videoPaths)
         {
             if (videoPaths == null || videoPaths.Length == 0)
