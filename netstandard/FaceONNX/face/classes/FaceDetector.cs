@@ -30,15 +30,72 @@ namespace FaceONNX
 
         public FaceDetector(SessionOptions options, float detectionThreshold = 0.5f, float confidenceThreshold = 0.4f, float nmsThreshold = 0.5f)
         {
-            options.AppendExecutionProvider_DML();  // Enable DirectML
-            var modelPath = Path.Combine(AppContext.BaseDirectory, "yolov5s-face.onnx");
-           _session = new InferenceSession(modelPath, options);
+            options.EnableMemoryPattern = true;
+            options.EnableCpuMemArena = true;
+            options.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
+            options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
+            options.IntraOpNumThreads = Environment.ProcessorCount;
+
+            if (TrySetExecutionProvider(options, ExecutionProviderManager.CUDA))
+            {
+                Console.WriteLine("Using CUDA execution provider.");
+                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CUDA);
+            }
+            else if (TrySetExecutionProvider(options, ExecutionProviderManager.DirectML))
+            {
+                Console.WriteLine("Using DirectML execution provider.");
+                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.DirectML);
+            }
+            else
+            {
+                Console.WriteLine("Using CPU execution provider.");
+                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CPU);
+                options.AppendExecutionProvider_CPU();
+            }
+
+            //var modelPath = Path.Combine(AppContext.BaseDirectory, "yolov5n.onnx");
+
+            // _session = new InferenceSession(modelPath, options);
+            _session = new InferenceSession(Resources.yolov5s_face, options);
 
             DetectionThreshold = detectionThreshold;
             ConfidenceThreshold = confidenceThreshold;
             NmsThreshold = nmsThreshold;
-        }
 
+            var dummyTensor = new DenseTensor<float>(new float[1 * 3 * 640 * 640], new[] { 1, 3, 640, 640 });
+            var inputName = _session.InputMetadata.Keys.First();
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(inputName, dummyTensor) };
+
+            // Run once to warm up the model (result can be discarded)
+            _session.Run(inputs).ToList().ForEach(o => o.Dispose());
+        }
+        private bool TrySetExecutionProvider(SessionOptions options, string provider)
+        {
+            try
+            {
+                // Attempt to append the provider to the session options
+                switch (provider)
+                {
+                    case ExecutionProviderManager.CUDA:
+                        options.AppendExecutionProvider_CUDA();
+                        return true;
+                    case ExecutionProviderManager.DirectML:
+                        options.AppendExecutionProvider_DML();
+                        return true;
+                    case ExecutionProviderManager.CPU:
+                        options.AppendExecutionProvider_CPU();
+                        return true;
+                    default:
+                        return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                // If we catch an exception, it means the provider is not available
+                Console.WriteLine($"Error appending {provider} provider: {ex.Message}");
+                return false;
+            }
+        }
         public FaceDetectionResult[] Forward(Bitmap image)
         {
             return Forward(image.ToRGB(false));
@@ -68,11 +125,11 @@ namespace FaceONNX
             var tensor = new DenseTensor<float>(inputArray, new[] { 1, 3, targetSize.Height, targetSize.Width });
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
             //DenseTensor<float> resultTensor=null;
-            //lock (_sessionLock)
-            //{
+            lock (_sessionLock)
+            {
                 using var results = _session.Run(inputs);
-              // resultTensor = (DenseTensor<float>)(results.FirstOrDefault()?.AsTensor<float>());
-                 var  resultTensor = (results.FirstOrDefault()?.AsTensor<float>());
+                // resultTensor = (DenseTensor<float>)(results.FirstOrDefault()?.AsTensor<float>());
+                var resultTensor = (results.FirstOrDefault()?.AsTensor<float>());
                 if (resultTensor == null)
                     return Array.Empty<FaceDetectionResult>();
 
@@ -103,7 +160,7 @@ namespace FaceONNX
 
                 var filtered = NonMaxSuppressionExensions.AgnosticNMSFiltration(detections, NmsThreshold);
                 return PostProcess(filtered, originalWidth, originalHeight, targetSize, yoloVectorLength, classCount);
-            //}
+            }
         }
 
         private FaceDetectionResult[] PostProcess(List<float[]> detections, int originalWidth, int originalHeight, Size resizedSize, int yoloVectorLength, int classCount)
@@ -187,4 +244,34 @@ namespace FaceONNX
             Dispose(false);
         }
     }
+    public static class ExecutionProviderManager
+    {
+        // Constants for different execution providers
+        public const string CUDA = "CUDA";
+        public const string DirectML = "DML";
+        public const string CPU = "CPU";
+
+        // This will store the current execution provider type (e.g., "CUDA", "DirectML", or "CPU")
+        public static string CurrentExecutionProvider { get; private set; } = CPU;  // Default to "CPU"
+
+        // A helper method to set the execution provider
+        public static void SetExecutionProvider(string provider)
+        {
+            // Ensure the provider is valid before setting it
+            if (provider == CUDA || provider == DirectML || provider == CPU)
+            {
+                CurrentExecutionProvider = provider;
+            }
+            else
+            {
+                throw new ArgumentException($"Invalid execution provider: {provider}");
+            }
+        }
+
+        // Optional: You can add more helper methods if needed for more complex logic
+        public static bool IsCuda() => CurrentExecutionProvider == CUDA;
+        public static bool IsDirectML() => CurrentExecutionProvider == DirectML;
+        public static bool IsCpu() => CurrentExecutionProvider == CPU;
+    }
+
 }

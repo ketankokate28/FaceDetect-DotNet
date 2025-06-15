@@ -1,9 +1,9 @@
 ﻿using FaceONNX;
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Text;
-using static Face_Matcher_UI.Form1;
+//using System.Collections.Generic;
+//using System.Text;
+//using static Face_Matcher_UI.Form1;
 
 namespace Face_Matcher_UI
 {
@@ -15,8 +15,8 @@ namespace Face_Matcher_UI
         private readonly CancellationToken _token;
         private readonly Task _processingTask;
 
-       // private readonly BlockingCollection<string> _imageQueue = new();
-        private readonly BlockingCollection<ImageFrame> _imageQueue = new();
+       private readonly BlockingCollection<string> _imageQueue = new();
+        //private readonly BlockingCollection<ImageFrame> _imageQueue = new();
 
         private readonly Dictionary<string, float[]> _suspectEmbeddings;
         private readonly string _resultDir;
@@ -28,48 +28,66 @@ namespace Face_Matcher_UI
             string resultDir,
             string tempResultDir,
             Action<string> logCallback,
-            CancellationToken token)
+            CancellationToken token, FaceDetector sharedFaceDetector, FaceEmbedder sharedFaceEmbedder)
         {
-           // _faceDetector = sharedFaceDetector;
-           // _faceEmbedder = sharedFaceEmbedder;
-            _faceDetector = new FaceDetector();
-            _faceEmbedder = new FaceEmbedder();
+            _faceDetector = sharedFaceDetector;
+           _faceEmbedder = sharedFaceEmbedder;
+            //_faceDetector = new FaceDetector();
+            //_faceEmbedder = new FaceEmbedder();
             _faceMatcher = new FaceMatcher();
+
+            //var detectorTask = Task.Run(() => new FaceDetector());
+            //var embedderTask = Task.Run(() => new FaceEmbedder());
+            //var matcherTask = Task.Run(() => new FaceMatcher());
+
+            //Task.WaitAll(detectorTask, embedderTask, matcherTask);
+
+            //_faceDetector = detectorTask.Result;
+            //_faceEmbedder = embedderTask.Result;
+            //_faceMatcher = matcherTask.Result;
 
             _suspectEmbeddings = suspectEmbeddings;
             _resultDir = resultDir;
             _tempResultDir = tempResultDir;
             _logCallback = logCallback;
             _token = token;
-
-            _processingTask = Task.Run(ProcessLoop, token);
+            if(ExecutionProviderManager.CurrentExecutionProvider == ExecutionProviderManager.CUDA)
+            {
+                _processingTask = Task.Run(ProcessLoop_CUDA, token);
+            }
+            else
+            {
+                _processingTask = Task.Run(ProcessLoop, token);
+            }
+            
         }
 
-        
-        public void EnqueueImage(ImageFrame frame)
+        public void EnqueueImage(string frame)
         {
             _imageQueue.Add(frame);
         }
+
         private async Task ProcessLoop()
         {
-            const int MaxBatchSize = 8;
-            const int DelayInterval = 10;
+            const int MaxBatchSize = 16;
+            const int DelayInterval = 10; // ms
 
-            var batch = new List<ImageFrame>(MaxBatchSize);
+            var batch = new List<string>(MaxBatchSize);
 
             while (!_token.IsCancellationRequested)
             {
                 try
                 {
                     while (batch.Count < MaxBatchSize &&
-                           _imageQueue.TryTake(out var frame, TimeSpan.FromMilliseconds(DelayInterval)))
+                           _imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(DelayInterval)))
                     {
-                        batch.Add(frame);
+                        batch.Add(imageFile);
                     }
 
                     if (batch.Count > 0)
                     {
-                        _faceMatcher.RunBatch(_suspectEmbeddings, batch, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                        _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
+                            _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
                         batch.Clear();
                     }
                 }
@@ -79,32 +97,63 @@ namespace Face_Matcher_UI
                 }
             }
         }
-        //public void EnqueueImage(string imageFile)
-        //{
-        //    _imageQueue.Add(imageFile);
-        //}
+        private async Task ProcessLoop_CUDA()
+        {
+            const int MaxBatchSize = 16;
+            const int DelayInterval = 10; // ms
 
+            var batch = new List<string>(MaxBatchSize);
+
+            while (!_token.IsCancellationRequested)
+            {
+                try
+                {
+                    while (batch.Count < MaxBatchSize &&
+                           _imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(DelayInterval)))
+                    {
+                        batch.Add(imageFile);
+                    }
+
+                    if (batch.Count > 0)
+                    {
+                        _faceMatcher.RunBatch_CUDA(_suspectEmbeddings, batch.ToArray(),
+                            _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                        batch.Clear();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logCallback?.Invoke($"Worker loop error: {ex.Message}");
+                }
+            }
+        }
+
+
+
+        //public void EnqueueImage(ImageFrame frame)
+        //{
+        //    _imageQueue.Add(frame);
+        //}
         //private async Task ProcessLoop()
         //{
-        //    const int MaxBatchSize = 16;
-        //    const int DelayInterval = 100; // ms
+        //    const int MaxBatchSize = 8;
+        //    const int DelayInterval = 10;
 
-        //    var batch = new List<string>(MaxBatchSize);
+        //    var batch = new List<ImageFrame>(MaxBatchSize);
 
         //    while (!_token.IsCancellationRequested)
         //    {
         //        try
         //        {
         //            while (batch.Count < MaxBatchSize &&
-        //                   _imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(DelayInterval)))
+        //                   _imageQueue.TryTake(out var frame, TimeSpan.FromMilliseconds(DelayInterval)))
         //            {
-        //                batch.Add(imageFile);
+        //                batch.Add(frame);
         //            }
 
         //            if (batch.Count > 0)
         //            {
-        //                _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
-        //                    _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+        //                _faceMatcher.RunBatch(_suspectEmbeddings, batch, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
         //                batch.Clear();
         //            }
         //        }
@@ -114,6 +163,31 @@ namespace Face_Matcher_UI
         //        }
         //    }
         //}
+
+
+        //public void EnqueueImage(string imageFile)
+        //{
+        //    _imageQueue.Add(imageFile);
+        //}
+        //private async Task ProcessLoop()
+        //{
+        //    while (!_token.IsCancellationRequested)
+        //    {
+        //        if (_imageQueue.TryTake(out var imageFile, TimeSpan.FromMilliseconds(10)))
+        //        {
+        //            try
+        //            {
+        //                _faceMatcher.RunBatch(_suspectEmbeddings, new[] { imageFile }, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+        //            }
+        //            catch (Exception ex)
+        //            {
+        //                _logCallback?.Invoke($"Error processing file {imageFile}: {ex.Message}");
+        //            }
+        //        }
+        //    }
+        //}
+
+
 
         //private async Task ProcessLoop_bakup_Latest()
         //{
@@ -132,7 +206,7 @@ namespace Face_Matcher_UI
         //        }
         //    }
         //}
-     
+
 
         public async void Dispose()
         {
