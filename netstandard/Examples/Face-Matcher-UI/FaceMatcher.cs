@@ -666,6 +666,8 @@ namespace Face_Matcher_UI
         }
         public void InsertMatchFaceLog(string captureTime, string frame, int cctvId, int? suspectId, string suspectName, float distance)
         {
+            string formattedCaptureTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+            string formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             using (var connection = new SqliteConnection(connectionString))
             {
                 connection.Open();
@@ -679,14 +681,13 @@ namespace Face_Matcher_UI
                 (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date);
             ";
 
-                    command.Parameters.AddWithValue("@capture_time", DateTime.Now);
+                    command.Parameters.AddWithValue("@capture_time", formattedCaptureTime);
                     command.Parameters.AddWithValue("@frame", frame);
                     command.Parameters.AddWithValue("@cctv_id", cctvId);
                     command.Parameters.AddWithValue("@suspect_id", (object?)suspectId ?? DBNull.Value); // nullable FK
                     command.Parameters.AddWithValue("@suspect", suspectName ?? (object)DBNull.Value);
                     command.Parameters.AddWithValue("@distance", distance);
-                    command.Parameters.AddWithValue("@created_date", DateTime.Now);
-
+                    command.Parameters.AddWithValue("@created_date", formattedCreatedDate);
                     try
                     {
                         command.ExecuteNonQuery();
