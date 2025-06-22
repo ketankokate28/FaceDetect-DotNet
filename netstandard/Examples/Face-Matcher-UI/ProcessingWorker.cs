@@ -16,7 +16,7 @@ namespace Face_Matcher_UI
         private readonly Task _processingTask;
 
        private readonly BlockingCollection<string> _imageQueue = new();
-        //private readonly BlockingCollection<ImageFrame> _imageQueue = new();
+       private readonly BlockingCollection<ImageFrame> _videoImageQueue = new();
 
         private readonly Dictionary<string, float[]> _suspectEmbeddings;
         private readonly string _resultDir;
@@ -130,39 +130,39 @@ namespace Face_Matcher_UI
 
 
 
-        //public void EnqueueImage(ImageFrame frame)
-        //{
-        //    _imageQueue.Add(frame);
-        //}
-        //private async Task ProcessLoop()
-        //{
-        //    const int MaxBatchSize = 8;
-        //    const int DelayInterval = 10;
+        public void EnqueueVideoImage(ImageFrame? frame,string s)
+        {
+            _videoImageQueue.Add(frame);
+        }
+        private async Task ProcessLoop_VIdeo()
+        {
+            const int MaxBatchSize = 8;
+            const int DelayInterval = 10;
 
-        //    var batch = new List<ImageFrame>(MaxBatchSize);
+            var batch = new List<ImageFrame>(MaxBatchSize);
 
-        //    while (!_token.IsCancellationRequested)
-        //    {
-        //        try
-        //        {
-        //            while (batch.Count < MaxBatchSize &&
-        //                   _imageQueue.TryTake(out var frame, TimeSpan.FromMilliseconds(DelayInterval)))
-        //            {
-        //                batch.Add(frame);
-        //            }
+            while (!_token.IsCancellationRequested)
+            {
+                try
+                {
+                    while (batch.Count < MaxBatchSize &&
+                           _videoImageQueue.TryTake(out var frame, TimeSpan.FromMilliseconds(DelayInterval)))
+                    {
+                        batch.Add(frame);
+                    }
 
-        //            if (batch.Count > 0)
-        //            {
-        //                _faceMatcher.RunBatch(_suspectEmbeddings, batch, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
-        //                batch.Clear();
-        //            }
-        //        }
-        //        catch (Exception ex)
-        //        {
-        //            _logCallback?.Invoke($"Worker loop error: {ex.Message}");
-        //        }
-        //    }
-        //}
+                    if (batch.Count > 0)
+                    {
+                     //   _faceMatcher.RunBatch(_suspectEmbeddings, batch, _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                        batch.Clear();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logCallback?.Invoke($"Worker loop error: {ex.Message}");
+                }
+            }
+        }
 
 
         //public void EnqueueImage(string imageFile)
@@ -249,5 +249,11 @@ namespace Face_Matcher_UI
         //    }
         //}
     }
-
+    public class ImageFrame
+    {
+        public string SourceId { get; set; }      // Camera or Video name
+        public Bitmap Image { get; set; }         // Bitmap of the frame
+        public DateTime Timestamp { get; set; }   // Capture time
+        public string FilePath { get; set; }
+    }
 }

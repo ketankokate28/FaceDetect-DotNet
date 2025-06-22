@@ -46,6 +46,7 @@
             addImagesToolStripMenuItem = new ToolStripMenuItem();
             exitToolStripMenuItem = new ToolStripMenuItem();
             panel1 = new Panel();
+            videoCutterToolStripMenuItem = new ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
             menuStrip1.SuspendLayout();
             SuspendLayout();
@@ -150,7 +151,7 @@
             // menuStrip1
             // 
             menuStrip1.ImageScalingSize = new Size(20, 20);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, enrollSuspectToolStripMenuItem, addImagesToolStripMenuItem, exitToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, enrollSuspectToolStripMenuItem, addImagesToolStripMenuItem, videoCutterToolStripMenuItem, exitToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1321, 28);
@@ -192,6 +193,13 @@
             panel1.Name = "panel1";
             panel1.Size = new Size(1321, 1);
             panel1.TabIndex = 17;
+            // 
+            // videoCutterToolStripMenuItem
+            // 
+            videoCutterToolStripMenuItem.Name = "videoCutterToolStripMenuItem";
+            videoCutterToolStripMenuItem.Size = new Size(106, 24);
+            videoCutterToolStripMenuItem.Text = "Video Cutter";
+            videoCutterToolStripMenuItem.Click += videoCutterToolStripMenuItem_Click;
             // 
             // Form1
             // 
@@ -240,5 +248,6 @@
         private ToolStripMenuItem addImagesToolStripMenuItem;
         private ToolStripMenuItem exitToolStripMenuItem;
         private Panel panel1;
+        private ToolStripMenuItem videoCutterToolStripMenuItem;
     }
 }
