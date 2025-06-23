@@ -44,11 +44,15 @@
             fileToolStripMenuItem = new ToolStripMenuItem();
             enrollSuspectToolStripMenuItem = new ToolStripMenuItem();
             addImagesToolStripMenuItem = new ToolStripMenuItem();
+            videoCutterToolStripMenuItem = new ToolStripMenuItem();
+            videoMatcherToolStripMenuItem = new ToolStripMenuItem();
             exitToolStripMenuItem = new ToolStripMenuItem();
             panel1 = new Panel();
-            videoCutterToolStripMenuItem = new ToolStripMenuItem();
+            contentPanel = new Panel();
+            homeToolStripMenuItem = new ToolStripMenuItem();
             ((System.ComponentModel.ISupportInitialize)pictureBox1).BeginInit();
             menuStrip1.SuspendLayout();
+            contentPanel.SuspendLayout();
             SuspendLayout();
             // 
             // button1
@@ -113,10 +117,9 @@
             // 
             // pictureBox1
             // 
-            pictureBox1.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left;
-            pictureBox1.Location = new Point(12, 84);
+            pictureBox1.Location = new Point(0, 28);
             pictureBox1.Name = "pictureBox1";
-            pictureBox1.Size = new Size(1002, 504);
+            pictureBox1.Size = new Size(1321, 676);
             pictureBox1.TabIndex = 12;
             pictureBox1.TabStop = false;
             // 
@@ -151,7 +154,7 @@
             // menuStrip1
             // 
             menuStrip1.ImageScalingSize = new Size(20, 20);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, enrollSuspectToolStripMenuItem, addImagesToolStripMenuItem, videoCutterToolStripMenuItem, exitToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, homeToolStripMenuItem, enrollSuspectToolStripMenuItem, addImagesToolStripMenuItem, videoCutterToolStripMenuItem, videoMatcherToolStripMenuItem, exitToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1321, 28);
@@ -178,6 +181,20 @@
             addImagesToolStripMenuItem.Text = "Add Images";
             addImagesToolStripMenuItem.Click += addImagesToolStripMenuItem_Click;
             // 
+            // videoCutterToolStripMenuItem
+            // 
+            videoCutterToolStripMenuItem.Name = "videoCutterToolStripMenuItem";
+            videoCutterToolStripMenuItem.Size = new Size(106, 24);
+            videoCutterToolStripMenuItem.Text = "Video Cutter";
+            videoCutterToolStripMenuItem.Click += videoCutterToolStripMenuItem_Click;
+            // 
+            // videoMatcherToolStripMenuItem
+            // 
+            videoMatcherToolStripMenuItem.Name = "videoMatcherToolStripMenuItem";
+            videoMatcherToolStripMenuItem.Size = new Size(120, 24);
+            videoMatcherToolStripMenuItem.Text = "Video Matcher";
+            videoMatcherToolStripMenuItem.Click += videoMatcherToolStripMenuItem_Click;
+            // 
             // exitToolStripMenuItem
             // 
             exitToolStripMenuItem.Name = "exitToolStripMenuItem";
@@ -194,29 +211,38 @@
             panel1.Size = new Size(1321, 1);
             panel1.TabIndex = 17;
             // 
-            // videoCutterToolStripMenuItem
+            // contentPanel
             // 
-            videoCutterToolStripMenuItem.Name = "videoCutterToolStripMenuItem";
-            videoCutterToolStripMenuItem.Size = new Size(106, 24);
-            videoCutterToolStripMenuItem.Text = "Video Cutter";
-            videoCutterToolStripMenuItem.Click += videoCutterToolStripMenuItem_Click;
+            contentPanel.Controls.Add(label1);
+            contentPanel.Controls.Add(btnNext);
+            contentPanel.Controls.Add(btnPrevious);
+            contentPanel.Controls.Add(pictureBox1);
+            contentPanel.Controls.Add(comboBox2);
+            contentPanel.Controls.Add(button2);
+            contentPanel.Controls.Add(comboBox1);
+            contentPanel.Controls.Add(btnBrowseSuspect);
+            contentPanel.Controls.Add(txtLog);
+            contentPanel.Controls.Add(button1);
+            contentPanel.Dock = DockStyle.Fill;
+            contentPanel.Location = new Point(0, 29);
+            contentPanel.Name = "contentPanel";
+            contentPanel.Size = new Size(1321, 675);
+            contentPanel.TabIndex = 18;
+            // 
+            // homeToolStripMenuItem
+            // 
+            homeToolStripMenuItem.Name = "homeToolStripMenuItem";
+            homeToolStripMenuItem.Size = new Size(64, 24);
+            homeToolStripMenuItem.Text = "Home";
+            homeToolStripMenuItem.Click += homeToolStripMenuItem_Click;
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(8F, 20F);
             AutoScaleMode = AutoScaleMode.Font;
             ClientSize = new Size(1321, 704);
+            Controls.Add(contentPanel);
             Controls.Add(panel1);
-            Controls.Add(label1);
-            Controls.Add(btnNext);
-            Controls.Add(btnPrevious);
-            Controls.Add(pictureBox1);
-            Controls.Add(comboBox2);
-            Controls.Add(button2);
-            Controls.Add(comboBox1);
-            Controls.Add(btnBrowseSuspect);
-            Controls.Add(txtLog);
-            Controls.Add(button1);
             Controls.Add(menuStrip1);
             Name = "Form1";
             Text = "Face Matcher Schedular";
@@ -224,6 +250,8 @@
             ((System.ComponentModel.ISupportInitialize)pictureBox1).EndInit();
             menuStrip1.ResumeLayout(false);
             menuStrip1.PerformLayout();
+            contentPanel.ResumeLayout(false);
+            contentPanel.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -249,5 +277,8 @@
         private ToolStripMenuItem exitToolStripMenuItem;
         private Panel panel1;
         private ToolStripMenuItem videoCutterToolStripMenuItem;
+        private ToolStripMenuItem videoMatcherToolStripMenuItem;
+        private Panel contentPanel;
+        private ToolStripMenuItem homeToolStripMenuItem;
     }
 }

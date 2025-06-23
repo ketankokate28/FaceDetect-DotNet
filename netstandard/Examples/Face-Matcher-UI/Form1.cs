@@ -40,6 +40,7 @@ namespace Face_Matcher_UI
         string VideoToolPath = null;
         public Form1()
         {
+            this.WindowState = FormWindowState.Maximized;
             InitializeComponent();
             var doc = XDocument.Load("appsettings.xml");
             VideoToolPath = doc.Root.Element("VideoToolPath").Value;
@@ -72,7 +73,7 @@ namespace Face_Matcher_UI
             watcher.EnableRaisingEvents = true;
             watcher.Created += Watcher_Created;
             watcher.Deleted += Watcher_Deleted;
-
+       
             imageCheckTimer = new System.Windows.Forms.Timer();
             imageCheckTimer.Interval = 2000; // check every 2 seconds
             imageCheckTimer.Tick += ImageCheckTimer_Tick;
@@ -228,6 +229,7 @@ namespace Face_Matcher_UI
         }
         private void Form1_Load(object sender, EventArgs e)
         {
+            ShowHomeScreen();
             imageFiles = Directory.GetFiles(fullPath, "*.*")
                                   .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
                                               f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
@@ -337,7 +339,7 @@ namespace Face_Matcher_UI
 
             lock (workerLock)
             {
-               // workers[workerIndex].EnqueueImage(imageFrame);
+                // workers[workerIndex].EnqueueImage(imageFrame);
                 workerIndex = (workerIndex + 1) % workers.Length;
             }
         }
@@ -532,9 +534,9 @@ namespace Face_Matcher_UI
                     encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 50L);
                     originalBitmap.Save(jpegStream, encoder, encoderParams);
 
-                   Guid g = Guid.NewGuid();
-                   var filePath = Path.Combine(framesDir, g.ToString() + ".jpg");
-                   File.WriteAllBytes(filePath, jpegStream.ToArray());
+                    Guid g = Guid.NewGuid();
+                    var filePath = Path.Combine(framesDir, g.ToString() + ".jpg");
+                    File.WriteAllBytes(filePath, jpegStream.ToArray());
 
                     jpegStream.Position = 0;
                     using var compressedBitmap = new Bitmap(jpegStream);
@@ -549,7 +551,7 @@ namespace Face_Matcher_UI
 
                     lock (workerLock)
                     {
-                        workers[workerIndex].EnqueueVideoImage(imageFrame,"");
+                        workers[workerIndex].EnqueueVideoImage(imageFrame, "");
                         frameCount++;
                     }
 
@@ -910,6 +912,49 @@ namespace Face_Matcher_UI
             {
                 MessageBox.Show("Error launching video cutter: " + ex.Message);
             }
+        }
+
+        private void videoMatcherToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            LoadUserControl(new DashboardControl());
+        }
+        private void LoadUserControl(UserControl control)
+        {
+            contentPanel.Controls.Clear(); // remove previous control
+            control.Dock = DockStyle.Fill;
+            contentPanel.Controls.Add(control);
+        }
+
+        private void homeToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            ShowHomeScreen();
+        }
+        private void ShowHomeScreen()
+        {
+            contentPanel.Controls.Clear();
+
+            contentPanel.Controls.Add(button1);
+            contentPanel.Controls.Add(txtLog);
+            contentPanel.Controls.Add(btnBrowseSuspect);
+            //contentPanel.Controls.Add(openFileDialog1);
+            contentPanel.Controls.Add(comboBox1);
+            contentPanel.Controls.Add(comboBox2);
+            contentPanel.Controls.Add(button2);
+            contentPanel.Controls.Add(pictureBox1);
+            contentPanel.Controls.Add(btnPrevious);
+            contentPanel.Controls.Add(btnNext);
+            contentPanel.Controls.Add(label1);
+            int topMargin = button1.Bottom + 20;
+            int bottomMargin = 20;
+            int rightMargin = txtLog.Left - 20;
+            int leftMargin = 20;
+
+            pictureBox1.Location = new Point(leftMargin, topMargin);
+            pictureBox1.Size = new Size(rightMargin - leftMargin, btnPrevious.Top - topMargin - bottomMargin);
+
+            //// Optional: adjust locations in case the layout resets
+            //pictureBox1.Location = new Point(20, 150);
+            //pictureBox1.Size = new Size(300, 300);
         }
     }
 }
