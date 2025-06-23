@@ -11,6 +11,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Face-Matcher-UI", "Face-Mat
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "SimpleVideoCutter", "Video-Cutter\src\SimpleVideoCutter\SimpleVideoCutter.csproj", "{173E93CB-D9DC-4E44-A1C4-E108D766FC71}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WorkerService", "WorkerService\WorkerService.csproj", "{BA75F564-9295-4E0C-A5E1-C7805D15426B}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -43,6 +45,14 @@ Global
 		{173E93CB-D9DC-4E44-A1C4-E108D766FC71}.Release|Any CPU.Build.0 = Release|Any CPU
 		{173E93CB-D9DC-4E44-A1C4-E108D766FC71}.Release|x64.ActiveCfg = Release|Any CPU
 		{173E93CB-D9DC-4E44-A1C4-E108D766FC71}.Release|x64.Build.0 = Release|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Debug|x64.Build.0 = Debug|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Release|x64.ActiveCfg = Release|Any CPU
+		{BA75F564-9295-4E0C-A5E1-C7805D15426B}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
