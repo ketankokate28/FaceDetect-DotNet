@@ -26,13 +26,13 @@ namespace WorkerService
             string resultDir,
             string tempResultDir,
             Action<string> logCallback,
-            CancellationToken token, FaceDetector sharedFaceDetector, FaceEmbedder sharedFaceEmbedder, IConfiguration configuration)
+            CancellationToken token, FaceDetector sharedFaceDetector, FaceEmbedder sharedFaceEmbedder, IConfiguration configuration,AppSettingsOptions _appSettings)
         {
             _faceDetector = sharedFaceDetector;
            _faceEmbedder = sharedFaceEmbedder;
             //_faceDetector = new FaceDetector();
             //_faceEmbedder = new FaceEmbedder();
-            _faceMatcher = new FaceMatcher(configuration);
+            _faceMatcher = new FaceMatcher(configuration, _appSettings);
 
             //var detectorTask = Task.Run(() => new FaceDetector());
             //var embedderTask = Task.Run(() => new FaceEmbedder());

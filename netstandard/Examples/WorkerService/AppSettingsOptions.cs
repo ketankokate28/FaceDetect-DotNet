@@ -9,5 +9,6 @@ namespace WorkerService
     public class AppSettingsOptions
     {
         public int SuspectReloadIntervalMinutes { get; set; } = 2;
+        public double MatchThreshold { get; set; } = 0.70;
     }
 }

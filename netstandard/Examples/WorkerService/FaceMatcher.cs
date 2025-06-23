@@ -16,6 +16,7 @@ using System.Windows.Forms;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Options;
 
 namespace WorkerService
 {
@@ -24,11 +25,15 @@ namespace WorkerService
         public double MatchThreshold { get; set; } = 0.65;
         string connectionString = "";
         private readonly IConfiguration _configuration;
-        private readonly ILogger<Worker> _logger;
-        public FaceMatcher(IConfiguration configuration)
+        private readonly ILogger<FaceMatcher> _logger;
+        private readonly AppSettingsOptions _appSettings;
+        public FaceMatcher(IConfiguration configuration, AppSettingsOptions appSettings)
         {
             _configuration = configuration;
             connectionString = _configuration.GetConnectionString("DefaultConnection");
+            _logger = LogHelper.GetLogger<FaceMatcher>();
+            _appSettings = appSettings;
+            MatchThreshold = _appSettings.MatchThreshold;
         }
         public Dictionary<string, float[]> PrecomputeSuspectEmbeddingsFromBlobs(Dictionary<int, (string name, List<byte[]> blobs)> suspects, Action<string> log)
         {

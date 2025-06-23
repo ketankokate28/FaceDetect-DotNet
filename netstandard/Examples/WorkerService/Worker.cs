@@ -118,7 +118,7 @@ namespace WorkerService
                         .Select(_ => new ProcessingWorker(embeddingsSnapshot, _paths.ResultDir, _paths.TempResultDir, message =>
                         {
                             // logging callback
-                        }, stoppingToken, sharedDetector, sharedEmbedder, _configuration))
+                        }, stoppingToken, sharedDetector, sharedEmbedder, _configuration,_appSettings))
                         .ToArray();
 
                     workersInitialized = true;
@@ -183,7 +183,7 @@ namespace WorkerService
 
                     if (updatedSuspects.Count > 0)
                     {
-                        var matcher = new FaceMatcher(_configuration);
+                        var matcher = new FaceMatcher(_configuration, _appSettings);
                         var newEmbeddings = await Task.Run(() =>
                             matcher.PrecomputeSuspectEmbeddingsFromBlobs(updatedSuspects, msg => _logger.LogInformation(msg)));
 
@@ -231,7 +231,7 @@ namespace WorkerService
                         // Run embedding computation in background
                         var newEmbeddings = await Task.Run(() =>
                         {
-                            var matcher = new FaceMatcher(_configuration);
+                            var matcher = new FaceMatcher(_configuration,_appSettings);
 
                             var validFolders = Directory.GetDirectories(_paths.SuspectDir)
                                 .Where(folderPath =>
