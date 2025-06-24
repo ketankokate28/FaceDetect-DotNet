@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing.Imaging;
 using System.Xml.Linq;
+using UI;
+
 
 //using System.Numerics;
 //using System.Text.RegularExpressions;
@@ -229,7 +231,8 @@ namespace Face_Matcher_UI
         }
         private void Form1_Load(object sender, EventArgs e)
         {
-            ShowHomeScreen();
+            // ShowHomeScreen();
+            LoadUserControl(new SuspectListControl());
             imageFiles = Directory.GetFiles(fullPath, "*.*")
                                   .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
                                               f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
@@ -822,77 +825,77 @@ namespace Face_Matcher_UI
             Application.Exit();
         }
 
-        private void enrollSuspectToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            var selectedType = comboBox1.SelectedItem?.ToString();
-            if (string.IsNullOrEmpty(selectedType))
-            {
-                MessageBox.Show("Please select File or Directory from the dropdown.");
-                return;
-            }
-            openFileDialog1.Title = "Select a file";
-            openFileDialog1.Filter = "All files (*.*)|*.*";
+        //private void enrollSuspectToolStripMenuItem_Click(object sender, EventArgs e)
+        //{
+        //    var selectedType = comboBox1.SelectedItem?.ToString();
+        //    if (string.IsNullOrEmpty(selectedType))
+        //    {
+        //        MessageBox.Show("Please select File or Directory from the dropdown.");
+        //        return;
+        //    }
+        //    openFileDialog1.Title = "Select a file";
+        //    openFileDialog1.Filter = "All files (*.*)|*.*";
 
-            if (selectedType == "File")
-            {
-                using (OpenFileDialog openFileDialog = new OpenFileDialog())
-                {
-                    openFileDialog.Title = "Select a file";
-                    openFileDialog.Filter = "All files (*.*)|*.*";
-                    if (openFileDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        suspectDir = openFileDialog.FileName;
-                    }
-                }
-            }
-            else if (selectedType == "Directory")
-            {
-                using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
-                {
-                    folderDialog.Description = "Select a folder";
-                    if (folderDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        suspectDir = folderDialog.SelectedPath;
-                    }
-                }
-            }
-        }
+        //    if (selectedType == "File")
+        //    {
+        //        using (OpenFileDialog openFileDialog = new OpenFileDialog())
+        //        {
+        //            openFileDialog.Title = "Select a file";
+        //            openFileDialog.Filter = "All files (*.*)|*.*";
+        //            if (openFileDialog.ShowDialog() == DialogResult.OK)
+        //            {
+        //                suspectDir = openFileDialog.FileName;
+        //            }
+        //        }
+        //    }
+        //    else if (selectedType == "Directory")
+        //    {
+        //        using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
+        //        {
+        //            folderDialog.Description = "Select a folder";
+        //            if (folderDialog.ShowDialog() == DialogResult.OK)
+        //            {
+        //                suspectDir = folderDialog.SelectedPath;
+        //            }
+        //        }
+        //    }
+        //}
 
-        private void addImagesToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            var selectedType = comboBox2.SelectedItem?.ToString();
-            if (string.IsNullOrEmpty(selectedType))
-            {
-                MessageBox.Show("Please select File or Directory from the dropdown.");
-                return;
-            }
-            openFileDialog1.Title = "Select a file";
-            openFileDialog1.Filter = "All files (*.*)|*.*";
+        //private void addImagesToolStripMenuItem_Click(object sender, EventArgs e)
+        //{
+        //    var selectedType = comboBox2.SelectedItem?.ToString();
+        //    if (string.IsNullOrEmpty(selectedType))
+        //    {
+        //        MessageBox.Show("Please select File or Directory from the dropdown.");
+        //        return;
+        //    }
+        //    openFileDialog1.Title = "Select a file";
+        //    openFileDialog1.Filter = "All files (*.*)|*.*";
 
-            if (selectedType == "File")
-            {
-                using (OpenFileDialog openFileDialog = new OpenFileDialog())
-                {
-                    openFileDialog.Title = "Select a file";
-                    openFileDialog.Filter = "All files (*.*)|*.*";
-                    if (openFileDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        imageDir = openFileDialog.FileName;
-                    }
-                }
-            }
-            else if (selectedType == "Directory")
-            {
-                using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
-                {
-                    folderDialog.Description = "Select a folder";
-                    if (folderDialog.ShowDialog() == DialogResult.OK)
-                    {
-                        imageDir = folderDialog.SelectedPath;
-                    }
-                }
-            }
-        }
+        //    if (selectedType == "File")
+        //    {
+        //        using (OpenFileDialog openFileDialog = new OpenFileDialog())
+        //        {
+        //            openFileDialog.Title = "Select a file";
+        //            openFileDialog.Filter = "All files (*.*)|*.*";
+        //            if (openFileDialog.ShowDialog() == DialogResult.OK)
+        //            {
+        //                imageDir = openFileDialog.FileName;
+        //            }
+        //        }
+        //    }
+        //    else if (selectedType == "Directory")
+        //    {
+        //        using (FolderBrowserDialog folderDialog = new FolderBrowserDialog())
+        //        {
+        //            folderDialog.Description = "Select a folder";
+        //            if (folderDialog.ShowDialog() == DialogResult.OK)
+        //            {
+        //                imageDir = folderDialog.SelectedPath;
+        //            }
+        //        }
+        //    }
+        //}
 
         private void videoCutterToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -916,7 +919,9 @@ namespace Face_Matcher_UI
 
         private void videoMatcherToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LoadUserControl(new DashboardControl());
+            // LoadUserControl(new DashboardControl());
+
+            ShowHomeScreen();
         }
         private void LoadUserControl(UserControl control)
         {
@@ -927,7 +932,7 @@ namespace Face_Matcher_UI
 
         private void homeToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            ShowHomeScreen();
+            LoadUserControl(new SuspectListControl());
         }
         private void ShowHomeScreen()
         {

@@ -42,8 +42,8 @@
             label1 = new Label();
             menuStrip1 = new MenuStrip();
             fileToolStripMenuItem = new ToolStripMenuItem();
-            enrollSuspectToolStripMenuItem = new ToolStripMenuItem();
-            addImagesToolStripMenuItem = new ToolStripMenuItem();
+            //enrollSuspectToolStripMenuItem = new ToolStripMenuItem();
+            //addImagesToolStripMenuItem = new ToolStripMenuItem();
             videoCutterToolStripMenuItem = new ToolStripMenuItem();
             videoMatcherToolStripMenuItem = new ToolStripMenuItem();
             exitToolStripMenuItem = new ToolStripMenuItem();
@@ -154,7 +154,7 @@
             // menuStrip1
             // 
             menuStrip1.ImageScalingSize = new Size(20, 20);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, homeToolStripMenuItem, enrollSuspectToolStripMenuItem, addImagesToolStripMenuItem, videoCutterToolStripMenuItem, videoMatcherToolStripMenuItem, exitToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, homeToolStripMenuItem, videoMatcherToolStripMenuItem, videoCutterToolStripMenuItem, exitToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1321, 28);
@@ -169,17 +169,17 @@
             // 
             // enrollSuspectToolStripMenuItem
             // 
-            enrollSuspectToolStripMenuItem.Name = "enrollSuspectToolStripMenuItem";
-            enrollSuspectToolStripMenuItem.Size = new Size(116, 24);
-            enrollSuspectToolStripMenuItem.Text = "Enroll Suspect";
-            enrollSuspectToolStripMenuItem.Click += enrollSuspectToolStripMenuItem_Click;
+            //enrollSuspectToolStripMenuItem.Name = "enrollSuspectToolStripMenuItem";
+            //enrollSuspectToolStripMenuItem.Size = new Size(116, 24);
+            //enrollSuspectToolStripMenuItem.Text = "Enroll Suspect";
+            //enrollSuspectToolStripMenuItem.Click += enrollSuspectToolStripMenuItem_Click;
             // 
             // addImagesToolStripMenuItem
             // 
-            addImagesToolStripMenuItem.Name = "addImagesToolStripMenuItem";
-            addImagesToolStripMenuItem.Size = new Size(103, 24);
-            addImagesToolStripMenuItem.Text = "Add Images";
-            addImagesToolStripMenuItem.Click += addImagesToolStripMenuItem_Click;
+            //addImagesToolStripMenuItem.Name = "addImagesToolStripMenuItem";
+            //addImagesToolStripMenuItem.Size = new Size(103, 24);
+            //addImagesToolStripMenuItem.Text = "Add Images";
+            //addImagesToolStripMenuItem.Click += addImagesToolStripMenuItem_Click;
             // 
             // videoCutterToolStripMenuItem
             // 
@@ -192,7 +192,7 @@
             // 
             videoMatcherToolStripMenuItem.Name = "videoMatcherToolStripMenuItem";
             videoMatcherToolStripMenuItem.Size = new Size(120, 24);
-            videoMatcherToolStripMenuItem.Text = "Video Matcher";
+            videoMatcherToolStripMenuItem.Text = "Quick Match";
             videoMatcherToolStripMenuItem.Click += videoMatcherToolStripMenuItem_Click;
             // 
             // exitToolStripMenuItem
@@ -272,8 +272,8 @@
         private Label label1;
         private MenuStrip menuStrip1;
         private ToolStripMenuItem fileToolStripMenuItem;
-        private ToolStripMenuItem enrollSuspectToolStripMenuItem;
-        private ToolStripMenuItem addImagesToolStripMenuItem;
+        //private ToolStripMenuItem enrollSuspectToolStripMenuItem;
+        //private ToolStripMenuItem addImagesToolStripMenuItem;
         private ToolStripMenuItem exitToolStripMenuItem;
         private Panel panel1;
         private ToolStripMenuItem videoCutterToolStripMenuItem;

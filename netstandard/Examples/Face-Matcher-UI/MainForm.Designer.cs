@@ -1,109 +1,177 @@
-﻿namespace Face_Matcher_UI
+﻿namespace UI
 {
-    partial class MainForm
+    partial class SuspectListControl
     {
-        /// <summary>
-        /// Required designer variable.
-        /// </summary>
         private System.ComponentModel.IContainer components = null;
+        private System.Windows.Forms.FlowLayoutPanel flowLayoutPanelSuspects;
 
-        /// <summary>
-        /// Clean up any resources being used.
-        /// </summary>
-        /// <param name="disposing">true if managed resources should be disposed; otherwise, false.</param>
-        protected override void Dispose(bool disposing)
-        {
-            if (disposing && (components != null))
-            {
-                components.Dispose();
-
-            }
-            base.Dispose(disposing);
-        }
-
-        #region Windows Form Designer generated code
-
-        /// <summary>
-        /// Required method for Designer support - do not modify
-        /// the contents of this method with the code editor.
-        /// </summary>
-        private MaterialSkin.Controls.MaterialTabSelector materialTabSelector1;
-        private MaterialSkin.Controls.MaterialTabControl materialTabControl1;
-        private System.Windows.Forms.TabPage tabPage1;
-        private System.Windows.Forms.TabPage tabPage2;
-
+        private System.Windows.Forms.SplitContainer splitContainer;
+        private System.Windows.Forms.Panel panelSearch;
+        private System.Windows.Forms.TextBox txtSearch;
+        private System.Windows.Forms.Button btnSearch;
+        // private System.Windows.Forms.FlowLayoutPanel flowLayoutPanelSuspects;
+        private Panel panelTopBar;
+        private Button btnEnroll;
+        private Panel panelSeparator;
         private void InitializeComponent()
         {
-            this.materialTabSelector1 = new MaterialSkin.Controls.MaterialTabSelector();
-            this.materialTabControl1 = new MaterialSkin.Controls.MaterialTabControl();
-            this.tabPage1 = new System.Windows.Forms.TabPage();
-            this.tabPage2 = new System.Windows.Forms.TabPage();
-
+            splitContainer = new SplitContainer();
+            leftPanel = new Panel();
+            flowLayoutPanelSuspects = new FlowLayoutPanel();
+            panelSearch = new Panel();
+            panelSearchContainer = new Panel();
+            txtSearch = new TextBox();
+            panelDetails = new Panel();
+            panelTopBar = new Panel();
+            btnEnroll = new Button();
+            panelSeparator = new Panel();
+            ((System.ComponentModel.ISupportInitialize)splitContainer).BeginInit();
+            splitContainer.Panel1.SuspendLayout();
+            splitContainer.Panel2.SuspendLayout();
+            splitContainer.SuspendLayout();
+            leftPanel.SuspendLayout();
+            panelSearch.SuspendLayout();
+            panelSearchContainer.SuspendLayout();
+            panelTopBar.SuspendLayout();
+            SuspendLayout();
             // 
-            // materialTabSelector1
+            // splitContainer
             // 
-            this.materialTabSelector1.BaseTabControl = this.materialTabControl1;
-            this.materialTabSelector1.Dock = System.Windows.Forms.DockStyle.Top;
-            this.materialTabSelector1.Location = new System.Drawing.Point(0, 64);
-            this.materialTabSelector1.MouseState = MaterialSkin.MouseState.HOVER;
-            this.materialTabSelector1.Name = "materialTabSelector1";
-            this.materialTabSelector1.Size = new System.Drawing.Size(800, 40);
-            this.materialTabSelector1.TabIndex = 0;
-            this.materialTabSelector1.Text = "materialTabSelector1";
-
+            splitContainer.Dock = DockStyle.Fill;
+            splitContainer.FixedPanel = FixedPanel.Panel1;
+            splitContainer.Location = new Point(0, 41);
+            splitContainer.Name = "splitContainer";
             // 
-            // materialTabControl1
+            // splitContainer.Panel1
             // 
-            this.materialTabControl1.Controls.Add(this.tabPage1);
-            this.materialTabControl1.Controls.Add(this.tabPage2);
-            this.materialTabControl1.Depth = 0;
-            this.materialTabControl1.Dock = System.Windows.Forms.DockStyle.Fill;
-            this.materialTabControl1.Location = new System.Drawing.Point(0, 104);
-            this.materialTabControl1.MouseState = MaterialSkin.MouseState.HOVER;
-            this.materialTabControl1.Multiline = true;
-            this.materialTabControl1.Name = "materialTabControl1";
-            this.materialTabControl1.SelectedIndex = 0;
-            this.materialTabControl1.Size = new System.Drawing.Size(800, 346);
-            this.materialTabControl1.TabIndex = 1;
-
+            splitContainer.Panel1.Controls.Add(leftPanel);
             // 
-            // tabPage1
+            // splitContainer.Panel2
             // 
-            this.tabPage1.Location = new System.Drawing.Point(4, 22);
-            this.tabPage1.Name = "tabPage1";
-            this.tabPage1.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage1.Size = new System.Drawing.Size(792, 320);
-            this.tabPage1.TabIndex = 0;
-            this.tabPage1.Text = "FIRST";
-            this.tabPage1.UseVisualStyleBackColor = true;
-
+            splitContainer.Panel2.Controls.Add(panelDetails);
+            splitContainer.Size = new Size(800, 409);
+            splitContainer.SplitterDistance = 200;
+            splitContainer.TabIndex = 0;
             // 
-            // tabPage2
+            // leftPanel
             // 
-            this.tabPage2.Location = new System.Drawing.Point(4, 22);
-            this.tabPage2.Name = "tabPage2";
-            this.tabPage2.Padding = new System.Windows.Forms.Padding(3);
-            this.tabPage2.Size = new System.Drawing.Size(792, 320);
-            this.tabPage2.TabIndex = 1;
-            this.tabPage2.Text = "SECOND";
-            this.tabPage2.UseVisualStyleBackColor = true;
-
+            leftPanel.Controls.Add(flowLayoutPanelSuspects);
+            leftPanel.Controls.Add(panelSearch);
+            leftPanel.Dock = DockStyle.Fill;
+            leftPanel.Location = new Point(0, 0);
+            leftPanel.Name = "leftPanel";
+            leftPanel.Size = new Size(200, 409);
+            leftPanel.TabIndex = 0;
             // 
-            // MainForm
+            // flowLayoutPanelSuspects
             // 
-            this.AutoScaleDimensions = new System.Drawing.SizeF(6F, 13F);
-            this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
-            this.ClientSize = new System.Drawing.Size(800, 450);
-            this.Controls.Add(this.materialTabControl1);
-            this.Controls.Add(this.materialTabSelector1);
-            this.Name = "MainForm";
-            this.Text = "MaterialSkin Demo";
-
-            // Finalize layout
-            this.materialTabControl1.ResumeLayout(false);
-            this.ResumeLayout(false);
+            flowLayoutPanelSuspects.AutoScroll = true;
+            flowLayoutPanelSuspects.Dock = DockStyle.Fill;
+            flowLayoutPanelSuspects.FlowDirection = FlowDirection.TopDown;
+            flowLayoutPanelSuspects.Location = new Point(0, 40);
+            flowLayoutPanelSuspects.Name = "flowLayoutPanelSuspects";
+            flowLayoutPanelSuspects.Padding = new Padding(5);
+            flowLayoutPanelSuspects.Size = new Size(200, 369);
+            flowLayoutPanelSuspects.TabIndex = 0;
+            flowLayoutPanelSuspects.WrapContents = false;
+            // 
+            // panelSearch
+            // 
+            panelSearch.Controls.Add(panelSearchContainer);
+            panelSearch.Dock = DockStyle.Top;
+            panelSearch.Location = new Point(0, 0);
+            panelSearch.Name = "panelSearch";
+            panelSearch.Padding = new Padding(5);
+            panelSearch.Size = new Size(200, 40);
+            panelSearch.TabIndex = 1;
+            // 
+            // panelSearchContainer
+            // 
+            panelSearchContainer.BackColor = Color.White;
+            panelSearchContainer.Controls.Add(txtSearch);
+            panelSearchContainer.Dock = DockStyle.Fill;
+            panelSearchContainer.Location = new Point(5, 5);
+            panelSearchContainer.Name = "panelSearchContainer";
+            panelSearchContainer.Padding = new Padding(5);
+            panelSearchContainer.Size = new Size(190, 30);
+            panelSearchContainer.TabIndex = 0;
+            // 
+            // txtSearch
+            // 
+            txtSearch.BackColor = Color.White;
+            txtSearch.BorderStyle = BorderStyle.None;
+            txtSearch.Dock = DockStyle.Fill;
+            txtSearch.Font = new Font("Segoe UI", 10F);
+            txtSearch.ForeColor = Color.Black;
+            txtSearch.Location = new Point(5, 5);
+            txtSearch.Margin = new Padding(0);
+            txtSearch.Name = "txtSearch";
+            txtSearch.PlaceholderText = "🔍 Search suspect...";
+            txtSearch.Size = new Size(180, 23);
+            txtSearch.TabIndex = 0;
+            txtSearch.TextChanged += txtSearch_TextChanged;
+            // 
+            // panelDetails
+            // 
+            panelDetails.BackColor = Color.White;
+            panelDetails.Dock = DockStyle.Fill;
+            panelDetails.Location = new Point(0, 0);
+            panelDetails.Name = "panelDetails";
+            panelDetails.Size = new Size(596, 409);
+            panelDetails.TabIndex = 0;
+            // 
+            // panelTopBar
+            // 
+            panelTopBar.BackColor = Color.WhiteSmoke;
+            panelTopBar.Controls.Add(btnEnroll);
+            panelTopBar.Dock = DockStyle.Top;
+            panelTopBar.Location = new Point(0, 0);
+            panelTopBar.Name = "panelTopBar";
+            panelTopBar.Padding = new Padding(10, 5, 10, 5);
+            panelTopBar.Size = new Size(800, 40);
+            panelTopBar.TabIndex = 2;
+            // 
+            // btnEnroll
+            // 
+            btnEnroll.AutoSize = true;
+            btnEnroll.Location = new Point(10, 8);
+            btnEnroll.Margin = new Padding(0, 0, 10, 0);
+            btnEnroll.Name = "btnEnroll";
+            btnEnroll.Size = new Size(112, 30);
+            btnEnroll.TabIndex = 0;
+            btnEnroll.Text = "Enroll Suspect";
+            btnEnroll.Click += btnEnroll_Click;
+            // 
+            // panelSeparator
+            // 
+            panelSeparator.BackColor = Color.Gray;
+            panelSeparator.Dock = DockStyle.Top;
+            panelSeparator.Location = new Point(0, 40);
+            panelSeparator.Name = "panelSeparator";
+            panelSeparator.Size = new Size(800, 1);
+            panelSeparator.TabIndex = 1;
+            // 
+            // SuspectListControl
+            // 
+            Controls.Add(splitContainer);
+            Controls.Add(panelSeparator);
+            Controls.Add(panelTopBar);
+            Name = "SuspectListControl";
+            Size = new Size(800, 450);
+            splitContainer.Panel1.ResumeLayout(false);
+            splitContainer.Panel2.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)splitContainer).EndInit();
+            splitContainer.ResumeLayout(false);
+            leftPanel.ResumeLayout(false);
+            panelSearch.ResumeLayout(false);
+            panelSearchContainer.ResumeLayout(false);
+            panelSearchContainer.PerformLayout();
+            panelTopBar.ResumeLayout(false);
+            panelTopBar.PerformLayout();
+            ResumeLayout(false);
         }
 
-        #endregion
+        private Panel leftPanel;
+        private Panel panelSearchContainer;
     }
 }

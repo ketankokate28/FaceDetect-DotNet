@@ -8,6 +8,7 @@ namespace Face_Matcher_UI
         [STAThread]
         static void Main()
         {
+            DbHelper.Initialize(); // <- Ensure DB and table are ready
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
             ApplicationConfiguration.Initialize();
