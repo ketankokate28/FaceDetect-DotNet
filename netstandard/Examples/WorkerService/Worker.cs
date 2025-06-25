@@ -105,11 +105,12 @@ namespace WorkerService
                         .Where(f => IsImage(f))
                         .ToArray();
 
-                    foreach (var img in allImageFiles)
-                    {
-                        imageQueue.Enqueue(img);
-                    }
+                    //foreach (var img in allImageFiles)
+                    //{
+                    //    imageQueue.Enqueue(img);
+                    //}
 
+                 
                     var sharedDetector = new FaceDetector();
                     var sharedEmbedder = new FaceEmbedder();
 
@@ -122,6 +123,10 @@ namespace WorkerService
                         .ToArray();
 
                     workersInitialized = true;
+                    foreach (var img in allImageFiles)
+                    {
+                        EnqueueImage(img);
+                    }
                 }
 
                 // Wait a little before checking again

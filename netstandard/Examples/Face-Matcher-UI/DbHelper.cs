@@ -39,6 +39,18 @@ namespace Face_Matcher_UI
             image10 TEXT
         );";
             new SQLiteCommand(createTable, conn).ExecuteNonQuery();
+
+            string createMatchLogsTable = @"CREATE TABLE IF NOT EXISTS Matchfacelogs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    capture_time TEXT NOT NULL,
+    frame TEXT NOT NULL,
+    cctv_id INTEGER NOT NULL,
+    suspect_id INTEGER,
+    suspect TEXT,
+    distance REAL NOT NULL,
+    created_date TEXT NOT NULL
+);";
+            new SQLiteCommand(createMatchLogsTable, conn).ExecuteNonQuery();
         }
 
         public static void InsertOrUpdateSuspect(Suspect suspect)
@@ -86,6 +98,114 @@ namespace Face_Matcher_UI
             }
             return list;
         }
+        public static (string name, List<byte[]> blobs)? GetSuspectById(int suspectId)
+        {
+            using var conn = new SQLiteConnection(connectionString);
+            conn.Open();
+
+            string sql = @"SELECT first_name,
+                          image1, image2, image3, image4, image5,
+                          image6, image7, image8, image9, image10
+                   FROM Suspect
+                   WHERE suspect_id = @SuspectId";
+
+            using var cmd = new SQLiteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@SuspectId", suspectId);
+
+            using var reader = cmd.ExecuteReader();
+            if (reader.Read())
+            {
+                string name = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                var blobs = new List<byte[]>();
+
+                for (int i = 1; i <= 10; i++) // image1 to image10
+                {
+                    if (!reader.IsDBNull(i))
+                    {
+                        string base64 = reader.GetString(i);
+                        try
+                        {
+                            byte[] blob = Convert.FromBase64String(base64);
+                            if (blob.Length > 0)
+                                blobs.Add(blob);
+                        }
+                        catch (FormatException ex)
+                        {
+                            Console.WriteLine($"Warning: Invalid base64 for suspect {suspectId} image{i}: {ex.Message}");
+                        }
+                    }
+                }
+
+                return (name, blobs);
+            }
+
+            return null; // suspect not found
+        }
+        public static void InsertMatchFaceLog(string captureTime, string frame, int cctvId, int? suspectId, string suspectName, float distance)
+        {
+            string formattedCaptureTime = captureTime ?? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+            string formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
+
+            using var conn = new SQLiteConnection(connectionString);
+            conn.Open();
+
+            using var cmd = new SQLiteCommand(@"
+        INSERT INTO Matchfacelogs 
+        (capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date)
+        VALUES 
+        (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date);
+    ", conn);
+
+            cmd.Parameters.AddWithValue("@capture_time", formattedCaptureTime);
+            cmd.Parameters.AddWithValue("@frame", frame);
+            cmd.Parameters.AddWithValue("@cctv_id", cctvId);
+            cmd.Parameters.AddWithValue("@suspect_id", (object?)suspectId ?? DBNull.Value); // handle null
+            cmd.Parameters.AddWithValue("@suspect", suspectName ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@distance", distance);
+            cmd.Parameters.AddWithValue("@created_date", formattedCreatedDate);
+
+            try
+            {
+                cmd.ExecuteNonQuery();
+            }
+            catch (SQLiteException ex)
+            {
+                Console.WriteLine($"SQLite error in InsertMatchFaceLog: {ex.Message}");
+                throw;
+            }
+        }
+        public static List<string> GetMatchedFramesForSuspect(int suspectId)
+        {
+            var results = new List<string>();
+            using var conn = new SQLiteConnection(connectionString);
+            conn.Open();
+
+            string sql = @"SELECT frame FROM Matchfacelogs
+                   WHERE suspect_id = @SuspectId
+                   ORDER BY capture_time DESC";
+
+            using var cmd = new SQLiteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@SuspectId", suspectId);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    results.Add(reader.GetString(0)); // base64 string
+                }
+            }
+
+            return results;
+        }
+
+
+    }
+    public class MatchFrame
+    {
+        public string Base64Image { get; set; }
+        public DateTime CaptureTime { get; set; }
+        public float Distance { get; set; }
     }
 
 }

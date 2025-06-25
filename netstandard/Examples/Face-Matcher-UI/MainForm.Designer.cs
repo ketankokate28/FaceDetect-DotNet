@@ -1,4 +1,6 @@
-﻿namespace UI
+﻿using System.Windows.Forms;
+
+namespace UI
 {
     partial class SuspectListControl
     {
@@ -13,6 +15,9 @@
         private Panel panelTopBar;
         private Button btnEnroll;
         private Panel panelSeparator;
+        private PictureBox picMainImage;
+        private FlowLayoutPanel imageScroll;
+        private Panel panelImagePreview;
         private void InitializeComponent()
         {
             splitContainer = new SplitContainer();
@@ -22,6 +27,9 @@
             panelSearchContainer = new Panel();
             txtSearch = new TextBox();
             panelDetails = new Panel();
+            imageScroll = new FlowLayoutPanel();
+            panelImagePreview = new Panel();
+            picMainImage = new PictureBox();
             panelTopBar = new Panel();
             btnEnroll = new Button();
             panelSeparator = new Panel();
@@ -32,6 +40,8 @@
             leftPanel.SuspendLayout();
             panelSearch.SuspendLayout();
             panelSearchContainer.SuspendLayout();
+            panelImagePreview.SuspendLayout();
+            ((System.ComponentModel.ISupportInitialize)picMainImage).BeginInit();
             panelTopBar.SuspendLayout();
             SuspendLayout();
             // 
@@ -120,6 +130,38 @@
             panelDetails.Size = new Size(596, 409);
             panelDetails.TabIndex = 0;
             // 
+            // imageScroll
+            // 
+            imageScroll.AutoScroll = true;
+            imageScroll.BorderStyle = BorderStyle.FixedSingle;
+            imageScroll.Location = new Point(20, 60);
+            imageScroll.Name = "imageScroll";
+            imageScroll.Size = new Size(550, 110);
+            imageScroll.TabIndex = 0;
+            imageScroll.WrapContents = false;
+            // 
+            // panelImagePreview
+            // 
+            panelImagePreview.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Right;
+            panelImagePreview.BackColor = Color.WhiteSmoke;
+            panelImagePreview.BorderStyle = BorderStyle.FixedSingle;
+            panelImagePreview.Controls.Add(picMainImage);
+            panelImagePreview.Location = new Point(310, 180);
+            panelImagePreview.Name = "panelImagePreview";
+            panelImagePreview.Size = new Size(260, 200);
+            panelImagePreview.TabIndex = 1;
+            // 
+            // picMainImage
+            // 
+            picMainImage.BackColor = Color.White;
+            picMainImage.Dock = DockStyle.Fill;
+            picMainImage.Location = new Point(0, 0);
+            picMainImage.Name = "picMainImage";
+            picMainImage.Size = new Size(258, 198);
+            picMainImage.SizeMode = PictureBoxSizeMode.Zoom;
+            picMainImage.TabIndex = 0;
+            picMainImage.TabStop = false;
+            // 
             // panelTopBar
             // 
             panelTopBar.BackColor = Color.WhiteSmoke;
@@ -166,6 +208,8 @@
             panelSearch.ResumeLayout(false);
             panelSearchContainer.ResumeLayout(false);
             panelSearchContainer.PerformLayout();
+            panelImagePreview.ResumeLayout(false);
+            ((System.ComponentModel.ISupportInitialize)picMainImage).EndInit();
             panelTopBar.ResumeLayout(false);
             panelTopBar.PerformLayout();
             ResumeLayout(false);
