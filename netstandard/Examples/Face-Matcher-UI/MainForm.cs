@@ -9,6 +9,8 @@ using SuspectManager.Forms;
 using Model;
 using System.Collections.Concurrent;
 using FaceONNX;
+using static System.Windows.Forms.VisualStyles.VisualStyleElement;
+using Button = System.Windows.Forms.Button;
 
 namespace UI
 {
@@ -43,6 +45,11 @@ namespace UI
         private Task _searchTask;
         private bool isProcessingRunning = false;
         public bool IsProcessingRunning => isProcessingRunning;
+        private Panel loaderPanel;
+        private Label loaderTextLabel;
+        private System.Windows.Forms.Timer searchTimer;
+        private DateTime searchStartTime;
+        private int dotCount = 0;
         public SuspectListControl()
         {
             InitializeComponent();
@@ -401,6 +408,45 @@ namespace UI
                 Enabled = true,
                 Margin = new Padding(15, 7, 0, 0)
             };
+            // Loader Panel (Modern pill look)
+            loaderPanel = new Panel
+            {
+                Width = 200,
+                Height = 30,
+                Margin = new Padding(5, 5, 5, 0),
+                Padding = new Padding(0),
+                Visible = false,
+                BackColor = Color.WhiteSmoke,
+                BorderStyle = BorderStyle.None,
+            };
+
+            // Add soft shadow effect (simulate with border)
+            loaderPanel.Paint += (s, e) =>
+            {
+                ControlPaint.DrawBorder(e.Graphics, loaderPanel.ClientRectangle,
+                    Color.LightGray, 1, ButtonBorderStyle.Solid,
+                    Color.LightGray, 1, ButtonBorderStyle.Solid,
+                    Color.LightGray, 1, ButtonBorderStyle.Solid,
+                    Color.LightGray, 1, ButtonBorderStyle.Solid);
+            };
+
+            // Rounded corners (pill-style)
+            loaderPanel.Region = System.Drawing.Region.FromHrgn(
+                NativeMethods.CreateRoundRectRgn(0, 0, loaderPanel.Width, loaderPanel.Height, 20, 20)
+            );
+
+            loaderTextLabel = new Label
+            {
+                Text = "🔍 Searching...",
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                TextAlign = ContentAlignment.MiddleCenter,
+                Dock = DockStyle.Fill,
+                AutoSize = false,
+                ForeColor = Color.MediumVioletRed, // softer standout
+                BackColor = Color.Transparent,
+            };
+
+            loaderPanel.Controls.Add(loaderTextLabel);
 
             // === Logic ===
             btnSelectFolder.Click += (s, e) =>
@@ -409,7 +455,7 @@ namespace UI
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
                     selectedFolderPath = dialog.SelectedPath;
-                    MessageBox.Show($"Folder selected: {selectedFolderPath}");
+                    //MessageBox.Show($"Folder selected: {selectedFolderPath}");
                 }
             };
 
@@ -437,6 +483,8 @@ namespace UI
             flow.Controls.Add(btnSelectFolder);
             flow.Controls.Add(btnStart);
             flow.Controls.Add(btnStop);
+
+            flow.Controls.Add(loaderPanel);
             flow.Controls.Add(btnExport);
 
             topHeaderPanel.Controls.Add(flow);
@@ -460,6 +508,26 @@ namespace UI
             btnStop.Enabled = true;
             btnExport.Enabled = false;
 
+            loaderPanel.Visible = true;
+            searchStartTime = DateTime.Now;
+            dotCount = 0;
+
+            if (searchTimer == null)
+            {
+                searchTimer = new System.Windows.Forms.Timer();
+                searchTimer.Interval = 1000;
+                searchTimer.Tick += (s, e) =>
+                {
+                    var elapsed = DateTime.Now - searchStartTime;
+                    dotCount = (dotCount + 1) % 4;
+                    string dots = new string('.', dotCount);
+                    loaderTextLabel.Text = $"🔍 Searching{dots}  ({elapsed.Minutes:D2}:{elapsed.Seconds:D2})";
+                };
+            }
+            searchTimer.Start();
+
+            //if (loaderLabel != null)
+            //    loaderLabel.Visible = true;
             // Step 1: Reload suspect
             await ReloadSingleSuspect(_selectedSuspectId);
 
@@ -565,8 +633,24 @@ namespace UI
             btnStart.Enabled = true;
             btnStop.Enabled = false;
             btnExport.Enabled = true;
+            selectedFolderPath = string.Empty;
+            //if (loaderLabel != null)
+            //    loaderLabel.Visible = false;
+
+            searchTimer?.Stop();
+            loaderPanel.Visible = false;
+            loaderTextLabel.Text = "🔍 Searching...";
+
+
+            // Optional: reset text for next run
+            loaderTextLabel.Text = "Searching...";
             _cts?.Cancel();
-            await Task.Delay(10000);
+
+            // Show popup while waiting
+            using (var stopForm = new StopProgressForm())
+            {
+                stopForm.ShowDialog();  // Blocks until progress completes
+            }
             if (_searchTask != null)
             {
                 try
@@ -589,13 +673,6 @@ namespace UI
             {
                 foreach (var worker in workers)
                 {
-                    //int retry = 0;
-                    //while (worker.IsRunning && retry < 100)
-                    //{
-                    //    await Task.Delay(50); // wait until it's not running
-                    //    retry++;
-                    //}
-
                     worker.Dispose(); // safe to dispose now
                 }
 
@@ -604,7 +681,7 @@ namespace UI
             processedImages.Clear();
             isProcessingRunning = false;
             // TODO: Add actual stop logic here
-            MessageBox.Show("Search stopped.");
+            //MessageBox.Show("Search stopped.");
         }
 
         private void HandleExportReport()

@@ -140,6 +140,16 @@ namespace Face_Matcher_UI
                         batch.Clear();
                     }
                 }
+                catch (OperationCanceledException)
+                {
+                    _logCallback?.Invoke("Processing loop canceled.");
+                    break; // Gracefully exit loop
+                }
+                catch (ObjectDisposedException ex)
+                {
+                    _logCallback?.Invoke($"Object disposed during processing: {ex.Message}");
+                    break;
+                }
                 catch (Exception ex)
                 {
                     _logCallback?.Invoke($"Worker loop error: {ex.Message}");
