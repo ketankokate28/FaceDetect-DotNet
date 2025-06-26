@@ -30,6 +30,7 @@ namespace UI
         string ResultDir = Path.Combine(AppContext.BaseDirectory, "Results");
         string FramesDir = Path.Combine(AppContext.BaseDirectory, "frames");
         string TempResultDir = Path.Combine(AppContext.BaseDirectory, "Results_Temp");
+        string TempProcessDir = Path.Combine(AppContext.BaseDirectory, "Temp_Process");
         private CancellationTokenSource _cts;
         ConcurrentDictionary<string, bool> processedImages = new ConcurrentDictionary<string, bool>();
         private List<string> matchedBase64Images = new();
@@ -38,6 +39,10 @@ namespace UI
         private Button btnNext;
         private Button btnPrev;
         private Label lblImageCounter;
+        string[] imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp" };
+        private Task _searchTask;
+        private bool isProcessingRunning = false;
+        public bool IsProcessingRunning => isProcessingRunning;
         public SuspectListControl()
         {
             InitializeComponent();
@@ -51,6 +56,7 @@ namespace UI
             this.Load += SuspectListControl_Load;
 
         }
+
         private void SuspectListControl_Load(object sender, EventArgs e)
         {
             ShowMatchImage(0); // This initializes the image view, label, buttons etc. correctly
@@ -109,6 +115,11 @@ namespace UI
                 // Card click opens details
                 card.CardClicked += (sender, e) =>
                 {
+                    if (isProcessingRunning)
+                    {
+                        MessageBox.Show("Please stop the current search before changing suspect.", "Search Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
                     _selectedSuspectId = capturedId;  // <-- Save globally
                     ShowSuspectDetails(capturedId);
                 };
@@ -116,6 +127,11 @@ namespace UI
                 // Edit click opens form
                 card.EditClicked += (sender, e) =>
                 {
+                    if (isProcessingRunning)
+                    {
+                        MessageBox.Show("Please stop the current search before editing a suspect.", "Search Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
                     if (isPopupOpen) return;
                     if (isEditingSuspect) return;
 
@@ -272,8 +288,6 @@ namespace UI
             }
         }
 
-
-
         private void ShowMatchImage(int delta)
         {
             if (matchedBase64Images == null || matchedBase64Images.Count == 0)
@@ -324,9 +338,6 @@ namespace UI
             lblImageCounter?.Refresh();
             this.PerformLayout();
         }
-
-
-
 
         private void AddTopBarWithButtons(Control parent, dynamic suspect, string genderDisplay, int padding)
         {
@@ -440,10 +451,11 @@ namespace UI
                 return;
             }
 
-            if(_selectedSuspectId<= 0)
+            if (_selectedSuspectId <= 0)
             {
                 MessageBox.Show("Please select suspect.");
             }
+            isProcessingRunning = true;
             btnStart.Enabled = false;
             btnStop.Enabled = true;
             btnExport.Enabled = false;
@@ -461,67 +473,75 @@ namespace UI
         }
         private async Task Process(CancellationToken stoppingToken)
         {
-            bool workersInitialized = false;
-
-            while (!stoppingToken.IsCancellationRequested)
+            if (!Directory.Exists(TempResultDir))
             {
-                Dictionary<string, float[]> embeddingsSnapshot;
+                Directory.CreateDirectory(TempResultDir);
+            }
+            else
+            {
+                Array.ForEach(Directory.GetFiles(TempResultDir), File.Delete);
+            }
 
-                lock (_embeddingLock)
+            var allImageFiles = Directory.GetFiles(selectedFolderPath)
+                .Where(f => IsImage(f))
+                .ToArray();
+
+            var sharedDetector = new FaceDetector();
+            var sharedEmbedder = new FaceEmbedder();
+            workers = Enumerable.Range(0, 4)
+                .Select(_ => new StandaloneProcessingWorker(cachedSuspectEmbeddings, ResultDir, TempResultDir, message =>
                 {
-                    if (cachedSuspectEmbeddings == null || cachedSuspectEmbeddings.Count < 1)
-                    {
-                        // Embeddings not ready yet; skip this cycle
-                        embeddingsSnapshot = null;
-                    }
-                    else
-                    {
-                        // Make a snapshot for safe usage
-                        embeddingsSnapshot = new Dictionary<string, float[]>(cachedSuspectEmbeddings);
-                    }
+                    // logging callback
+                }, stoppingToken, sharedDetector, sharedEmbedder))
+                .ToArray();
+            CopyAllImagesToFolder(selectedFolderPath, FramesDir);
+            //foreach (var img in allImageFiles)
+            //{
+            //    if (!processedImages.ContainsKey(img))
+            //    {
+            //        processedImages.TryAdd(img, true);
+            //        EnqueueImage(img);
+
+            //    }
+            //}
+        }
+        void CopyAllImagesToFolder(string sourceDir, string destDir)
+        {
+            if (!Directory.Exists(destDir))
+            {
+                Directory.CreateDirectory(destDir);
+            }
+            else
+            {
+                Directory.GetFiles(destDir).ToList().ForEach(File.Delete);
+            }
+
+            var allImageFiles = Directory.GetFiles(sourceDir, "*.*", SearchOption.AllDirectories)
+                .Where(IsImage)
+                .ToArray();
+
+            foreach (var file in allImageFiles)
+            {
+                var destPath = Path.Combine(destDir, Path.GetFileName(file));
+
+                // Avoid overwrite conflicts
+                string finalPath = destPath;
+                int count = 1;
+                while (File.Exists(finalPath))
+                {
+                    string fileName = Path.GetFileNameWithoutExtension(file);
+                    string ext = Path.GetExtension(file);
+                    finalPath = Path.Combine(destDir, $"{fileName}_{count}{ext}");
+                    count++;
                 }
 
-                if (embeddingsSnapshot != null)
+                File.Copy(file, finalPath);
+                if (!processedImages.ContainsKey(finalPath))
                 {
-                    //_logger.LogInformation("Starting processing workers...");
+                    processedImages.TryAdd(finalPath, true);
+                    EnqueueImage(finalPath);
 
-                    if (!Directory.Exists(TempResultDir))
-                    {
-                        Directory.CreateDirectory(TempResultDir);
-                    }
-                    else
-                    {
-                        Array.ForEach(Directory.GetFiles(TempResultDir), File.Delete);
-                    }
-
-                    var allImageFiles = Directory.GetFiles(selectedFolderPath)
-                        .Where(f => IsImage(f))
-                        .ToArray();
-
-
-
-                    var sharedDetector = new FaceDetector();
-                    var sharedEmbedder = new FaceEmbedder();
-                    workers = Enumerable.Range(0, 4)
-                        .Select(_ => new StandaloneProcessingWorker(embeddingsSnapshot, ResultDir, TempResultDir, message =>
-                        {
-                            // logging callback
-                        }, stoppingToken, sharedDetector, sharedEmbedder))
-                        .ToArray();
-
-                    workersInitialized = true;
-                    foreach (var img in allImageFiles)
-                    {
-                        if (!processedImages.ContainsKey(img))
-                        {
-                            processedImages.TryAdd(img, true);
-                            EnqueueImage(img);
-
-                        }
-                    }
                 }
-                // Wait a little before checking again
-                await Task.Delay(1000, stoppingToken);
             }
         }
         private void EnqueueImage(string imagePath)
@@ -538,17 +558,51 @@ namespace UI
         bool IsImage(string path)
         {
             string ext = Path.GetExtension(path).ToLower();
-            return ext == ".jpg" || ext == ".jpeg" || ext == ".png" || ext == ".bmp";
+            return imageExtensions.Contains(ext);
         }
-        private void HandleStopSearch(Button btnStart, Button btnStop, LinkLabel btnExport)
+        private async void HandleStopSearch(Button btnStart, Button btnStop, LinkLabel btnExport)
         {
             btnStart.Enabled = true;
             btnStop.Enabled = false;
             btnExport.Enabled = true;
             _cts?.Cancel();
+            await Task.Delay(10000);
+            if (_searchTask != null)
+            {
+                try
+                {
+                    await _searchTask;
+                }
+                catch (OperationCanceledException)
+                {
+                    // Expected during cancellation
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Error during cancellation: {ex.Message}");
+                }
+            }
             _cts?.Dispose();
             _cts = null;
+            _searchTask = null;
+            if (workers != null)
+            {
+                foreach (var worker in workers)
+                {
+                    //int retry = 0;
+                    //while (worker.IsRunning && retry < 100)
+                    //{
+                    //    await Task.Delay(50); // wait until it's not running
+                    //    retry++;
+                    //}
 
+                    worker.Dispose(); // safe to dispose now
+                }
+
+                workers = null;
+            }
+            processedImages.Clear();
+            isProcessingRunning = false;
             // TODO: Add actual stop logic here
             MessageBox.Show("Search stopped.");
         }

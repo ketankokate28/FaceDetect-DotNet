@@ -16,7 +16,7 @@ namespace WorkerService
        private readonly BlockingCollection<string> _imageQueue = new();
        private readonly BlockingCollection<ImageFrame> _videoImageQueue = new();
 
-        private readonly Dictionary<string, float[]> _suspectEmbeddings;
+        private  Dictionary<string, float[]> _suspectEmbeddings;
         private readonly string _resultDir;
         private readonly string _tempResultDir;
         private readonly Action<string> _logCallback;
@@ -64,7 +64,14 @@ namespace WorkerService
         {
             _imageQueue.Add(frame);
         }
-
+        public void EnqueueSuspect(Dictionary<string, float[]> suspectEmbeddings)
+        {
+            _suspectEmbeddings = suspectEmbeddings;
+        }
+        public void Start()
+        {
+            Task.Run(ProcessLoop); // this runs your infinite processing loop
+        }
         private async Task ProcessLoop()
         {
             const int MaxBatchSize = 16;

@@ -26,6 +26,7 @@ namespace WorkerService
         private readonly object workerLock = new object();
         private readonly object _embeddingLock = new();
         private DateTime _lastLoadedTime = DateTime.MinValue;
+        private readonly TaskCompletionSource<bool> _initialLoadCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public Worker(ILogger<Worker> logger, IConfiguration configuration, IOptions<AppPathsOptions> paths,
              IOptions<AppSettingsOptions> appSettings)
         {
@@ -63,6 +64,9 @@ namespace WorkerService
             // Start suspect reload loop (periodic)
             _ = Task.Run(() => ReloadSuspectsLoop(stoppingToken));
 
+            // Wait for initial suspect load before proceeding
+            await _initialLoadCompleted.Task;
+
             // Start main logic (continuous)
             await Process(stoppingToken);
         }
@@ -70,26 +74,9 @@ namespace WorkerService
         {
             bool workersInitialized = false;
 
-            while (!stoppingToken.IsCancellationRequested)
-            {
+            //while (!stoppingToken.IsCancellationRequested)
+            //{
                 Dictionary<string, float[]> embeddingsSnapshot;
-
-                lock (_embeddingLock)
-                {
-                    if (cachedSuspectEmbeddings == null || cachedSuspectEmbeddings.Count < 1)
-                    {
-                        // Embeddings not ready yet; skip this cycle
-                        embeddingsSnapshot = null;
-                    }
-                    else
-                    {
-                        // Make a snapshot for safe usage
-                        embeddingsSnapshot = new Dictionary<string, float[]>(cachedSuspectEmbeddings);
-                    }
-                }
-
-                if (embeddingsSnapshot != null && !workersInitialized)
-                {
                     _logger.LogInformation("Starting processing workers...");
 
                     if (!Directory.Exists(_paths.TempResultDir))
@@ -114,24 +101,30 @@ namespace WorkerService
                     var sharedDetector = new FaceDetector();
                     var sharedEmbedder = new FaceEmbedder();
 
-                    StartImageWatcher(_paths.FramesDir);
-                    workers = Enumerable.Range(0, 4)
-                        .Select(_ => new ProcessingWorker(embeddingsSnapshot, _paths.ResultDir, _paths.TempResultDir, message =>
-                        {
-                            // logging callback
-                        }, stoppingToken, sharedDetector, sharedEmbedder, _configuration,_appSettings))
-                        .ToArray();
+                  
+                workers = Enumerable.Range(0, 4)
+.Select(_ => new ProcessingWorker(cachedSuspectEmbeddings, _paths.ResultDir, _paths.TempResultDir, message =>
+{
+    _logger.LogInformation(message); // enable actual log
+}, stoppingToken, sharedDetector, sharedEmbedder, _configuration, _appSettings))
+.ToArray();
 
-                    workersInitialized = true;
+                foreach (var worker in workers)
+                {
+                    worker.Start();
+                }
+                //EnqueueSuspect(cachedSuspectEmbeddings);
+
+                workersInitialized = true;
                     foreach (var img in allImageFiles)
                     {
                         EnqueueImage(img);
                     }
-                }
+                StartImageWatcher(_paths.FramesDir);
 
                 // Wait a little before checking again
-                await Task.Delay(1000, stoppingToken);
-            }
+               // await Task.Delay(1000, stoppingToken);
+           // }
         }
         private async Task ReloadSuspectsLoop(CancellationToken stoppingToken)
         {
@@ -207,9 +200,14 @@ namespace WorkerService
 
                                 cachedSuspectEmbeddings[key] = newEmbeddings[key];
                             }
+                            EnqueueSuspect(cachedSuspectEmbeddings);
                         }
 
                         _logger.LogInformation("Reloaded {0} suspects at {1}", newEmbeddings.Count, DateTime.Now);
+                        if (!_initialLoadCompleted.Task.IsCompleted)
+                        {
+                            _initialLoadCompleted.SetResult(true);
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -220,60 +218,6 @@ namespace WorkerService
                 await Task.Delay(TimeSpan.FromMinutes(_appSettings.SuspectReloadIntervalMinutes), stoppingToken);
             }
         }
-
-
-        private async Task ReloadSuspectsLoop_backup(CancellationToken stoppingToken)
-        {
-            while (!stoppingToken.IsCancellationRequested)
-            {
-                try
-                {
-                    _logger.LogInformation("Reloading suspects and embeddings...");
-
-                    var suspects = LoadSuspectList();
-                    if (suspects.Count > 0)
-                    {
-                        // Run embedding computation in background
-                        var newEmbeddings = await Task.Run(() =>
-                        {
-                            var matcher = new FaceMatcher(_configuration,_appSettings);
-
-                            var validFolders = Directory.GetDirectories(_paths.SuspectDir)
-                                .Where(folderPath =>
-                                {
-                                    var folderName = Path.GetFileName(folderPath);
-                                    return int.TryParse(folderName, out int id) && suspects.ContainsKey(id);
-                                })
-                                .ToList();
-
-                            return matcher.PrecomputeSuspectEmbeddings(validFolders, message => { });
-                        });
-
-                        // Safely replace the shared embeddings
-                        lock (_embeddingLock)
-                        {
-                            cachedSuspectEmbeddings = newEmbeddings;
-                        }
-
-                        _logger.LogInformation("Reloaded {0} suspects and embeddings at {1}", suspects.Count, DateTime.Now);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Error reloading suspects/embeddings");
-                }
-
-                try
-                {
-                    await Task.Delay(TimeSpan.FromMinutes(_appSettings.SuspectReloadIntervalMinutes), stoppingToken);
-                }
-                catch (TaskCanceledException)
-                {
-                    break; // service is shutting down
-                }
-            }
-        }
-
 
         void StartImageWatcher(string imageDir)
         {
@@ -301,6 +245,16 @@ namespace WorkerService
             {
                 workers[workerIndex].EnqueueImage(imagePath);
                 workerIndex = (workerIndex + 1) % workers.Length;
+            }
+        }
+        private void EnqueueSuspect(Dictionary<string, float[]> _cachedSuspectEmbeddings)
+        {
+            if (workers == null || workers.Length == 0)
+                return; // workers not initialized
+
+            foreach(var worker in workers)
+            {
+                worker.EnqueueSuspect(_cachedSuspectEmbeddings);
             }
         }
         bool IsImage(string path)
@@ -351,5 +305,59 @@ namespace WorkerService
 
             return suspects;
         }
+
+
+        private async Task ReloadSuspectsLoop_backup(CancellationToken stoppingToken)
+        {
+            while (!stoppingToken.IsCancellationRequested)
+            {
+                try
+                {
+                    _logger.LogInformation("Reloading suspects and embeddings...");
+
+                    var suspects = LoadSuspectList();
+                    if (suspects.Count > 0)
+                    {
+                        // Run embedding computation in background
+                        var newEmbeddings = await Task.Run(() =>
+                        {
+                            var matcher = new FaceMatcher(_configuration, _appSettings);
+
+                            var validFolders = Directory.GetDirectories(_paths.SuspectDir)
+                                .Where(folderPath =>
+                                {
+                                    var folderName = Path.GetFileName(folderPath);
+                                    return int.TryParse(folderName, out int id) && suspects.ContainsKey(id);
+                                })
+                                .ToList();
+
+                            return matcher.PrecomputeSuspectEmbeddings(validFolders, message => { });
+                        });
+
+                        // Safely replace the shared embeddings
+                        lock (_embeddingLock)
+                        {
+                            cachedSuspectEmbeddings = newEmbeddings;
+                        }
+
+                        _logger.LogInformation("Reloaded {0} suspects and embeddings at {1}", suspects.Count, DateTime.Now);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error reloading suspects/embeddings");
+                }
+
+                try
+                {
+                    await Task.Delay(TimeSpan.FromMinutes(_appSettings.SuspectReloadIntervalMinutes), stoppingToken);
+                }
+                catch (TaskCanceledException)
+                {
+                    break; // service is shutting down
+                }
+            }
+        }
+
     }
 }

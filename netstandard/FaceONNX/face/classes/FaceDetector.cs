@@ -1,4 +1,5 @@
-﻿using FaceONNX.Properties;
+﻿using Accord.Math.Environments;
+using FaceONNX.Properties;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
@@ -36,26 +37,7 @@ namespace FaceONNX
             options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
             options.IntraOpNumThreads = Environment.ProcessorCount;
 
-            if (TrySetExecutionProvider(options, ExecutionProviderManager.CUDA))
-            {
-                Console.WriteLine("Using CUDA execution provider.");
-                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CUDA);
-            }
-            else if (TrySetExecutionProvider(options, ExecutionProviderManager.DirectML))
-            {
-                Console.WriteLine("Using DirectML execution provider.");
-                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.DirectML);
-            }
-            else
-            {
-                Console.WriteLine("Using CPU execution provider.");
-                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CPU);
-                options.AppendExecutionProvider_CPU();
-            }
-
-            //var modelPath = Path.Combine(AppContext.BaseDirectory, "yolov5n.onnx");
-
-            // _session = new InferenceSession(modelPath, options);
+            TrySetExecutionProvider(options);
             _session = new InferenceSession(Resources.yolov5s_face, options);
 
             DetectionThreshold = detectionThreshold;
@@ -69,33 +51,61 @@ namespace FaceONNX
             // Run once to warm up the model (result can be discarded)
             _session.Run(inputs).ToList().ForEach(o => o.Dispose());
         }
-        private bool TrySetExecutionProvider(SessionOptions options, string provider)
+        private bool TrySetExecutionProvider(SessionOptions options)
         {
-            try
+            var availableProviders = OrtEnv.Instance().GetAvailableProviders()
+                .Select(p => p.ToLowerInvariant())
+                .ToList();
+
+            if (availableProviders.Contains("cudaexecutionprovider".ToLowerInvariant()))
             {
-                // Attempt to append the provider to the session options
-                switch (provider)
+                try
                 {
-                    case ExecutionProviderManager.CUDA:
-                        options.AppendExecutionProvider_CUDA();
-                        return true;
-                    case ExecutionProviderManager.DirectML:
-                        options.AppendExecutionProvider_DML();
-                        return true;
-                    case ExecutionProviderManager.CPU:
-                        options.AppendExecutionProvider_CPU();
-                        return true;
-                    default:
-                        return false;
+                    options.AppendExecutionProvider_CUDA();
+                    Console.WriteLine("Using CUDA execution provider.");
+                    ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CUDA);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error using CUDA provider: {ex.Message}");
                 }
             }
-            catch (Exception ex)
+
+            if (availableProviders.Contains("dmlexecutionprovider".ToLowerInvariant()))
             {
-                // If we catch an exception, it means the provider is not available
-                Console.WriteLine($"Error appending {provider} provider: {ex.Message}");
-                return false;
+                try
+                {
+                    options.AppendExecutionProvider_DML();
+                    Console.WriteLine("Using DirectML execution provider.");
+                    ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.DirectML);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error using DirectML provider: {ex.Message}");
+                }
             }
+
+            if (availableProviders.Contains("cpuexecutionprovider".ToLowerInvariant()))
+            {
+                try
+                {
+                    options.AppendExecutionProvider_CPU();
+                    Console.WriteLine("Using CPU execution provider.");
+                    ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CPU);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error using CPU provider: {ex.Message}");
+                }
+            }
+
+            Console.WriteLine("No known execution provider available.");
+            return false;
         }
+
         public FaceDetectionResult[] Forward(Bitmap image)
         {
             return Forward(image.ToRGB(false));
@@ -220,6 +230,7 @@ namespace FaceONNX
             }
             return resized;
         }
+ 
 
         public void Dispose()
         {
@@ -238,7 +249,7 @@ namespace FaceONNX
                 _disposed = true;
             }
         }
-
+        public bool IsDisposed => _disposed;
         ~FaceDetector()
         {
             Dispose(false);
@@ -247,9 +258,9 @@ namespace FaceONNX
     public static class ExecutionProviderManager
     {
         // Constants for different execution providers
-        public const string CUDA = "CUDA";
-        public const string DirectML = "DML";
-        public const string CPU = "CPU";
+        public const string CUDA = "CUDAExecutionProvider";
+        public const string DirectML = "DmlExecutionProvider";
+        public const string CPU = "CPUExecutionProvider";
 
         // This will store the current execution provider type (e.g., "CUDA", "DirectML", or "CPU")
         public static string CurrentExecutionProvider { get; private set; } = CPU;  // Default to "CPU"

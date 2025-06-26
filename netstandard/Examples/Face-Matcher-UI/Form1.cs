@@ -40,6 +40,8 @@ namespace Face_Matcher_UI
         private int workerIndex = 0;
         private readonly object workerLock = new object(); // to keep thread safety
         string VideoToolPath = null;
+        private UserControl currentControl;
+        private SuspectListControl suspectListControl;
         public Form1()
         {
             this.WindowState = FormWindowState.Maximized;
@@ -232,7 +234,8 @@ namespace Face_Matcher_UI
         private void Form1_Load(object sender, EventArgs e)
         {
             // ShowHomeScreen();
-            LoadUserControl(new SuspectListControl());
+            suspectListControl = new SuspectListControl();
+            LoadUserControl(suspectListControl);
             imageFiles = Directory.GetFiles(fullPath, "*.*")
                                   .Where(f => f.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
                                               f.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
@@ -920,11 +923,23 @@ namespace Face_Matcher_UI
         private void videoMatcherToolStripMenuItem_Click(object sender, EventArgs e)
         {
             // LoadUserControl(new DashboardControl());
+            if (suspectListControl != null && suspectListControl.IsProcessingRunning)
+            {
+                MessageBox.Show("A search is currently running. Please stop it before switching modes.", "Warning", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
 
             ShowHomeScreen();
         }
+
         private void LoadUserControl(UserControl control)
         {
+            if (currentControl is SuspectListControl suspectList && suspectList.IsProcessingRunning)
+            {
+                MessageBox.Show("A search is currently running. Please stop it before switching screens.", "Operation Blocked", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+            currentControl = control;
             contentPanel.Controls.Clear(); // remove previous control
             control.Dock = DockStyle.Fill;
             contentPanel.Controls.Add(control);
@@ -932,7 +947,8 @@ namespace Face_Matcher_UI
 
         private void homeToolStripMenuItem_Click(object sender, EventArgs e)
         {
-            LoadUserControl(new SuspectListControl());
+            suspectListControl = new SuspectListControl();
+            LoadUserControl(suspectListControl);
         }
         private void ShowHomeScreen()
         {

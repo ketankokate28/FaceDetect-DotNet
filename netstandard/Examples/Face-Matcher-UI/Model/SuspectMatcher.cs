@@ -16,6 +16,7 @@ using System.Windows.Forms;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using Face_Matcher_UI;
+using Accord.Statistics.Running;
 
 namespace Model
 {
@@ -285,6 +286,11 @@ namespace Model
   FaceDetector faceDetector,
   FaceEmbedder faceEmbedder)
         {
+            if (faceDetector == null || faceEmbedder == null || faceEmbedder.IsDisposed || faceDetector.IsDisposed)
+            {
+                logCallback?.Invoke("Detector or embedder not initialized.");
+                return;
+            }
             using var painter = new Painter()
             {
                 BoxPen = new Pen(Color.Yellow, 4),
@@ -395,9 +401,14 @@ namespace Model
                  string tempResultDir,
                  Action<string> logCallback, FaceDetector faceDetector, FaceEmbedder faceEmbedder)
             {
-                //using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 15,), Transparency = 0 };
+            if (faceDetector == null || faceEmbedder == null || faceEmbedder.IsDisposed || faceDetector.IsDisposed)
+            {
+                logCallback?.Invoke("Detector or embedder not initialized.");
+                return;
+            }
 
-                using var painter = new Painter()
+            //using var painter = new Painter() { BoxPen = new Pen(Color.Yellow, 15,), Transparency = 0 };
+            using var painter = new Painter()
                 {
                     BoxPen = new Pen(Color.Yellow, 4), // Thinner and more modern
                     TextFont = new Font("Segoe UI", 10, FontStyle.Bold), // Clearer system font
@@ -433,8 +444,18 @@ namespace Model
                         {
                             try
                             {
+                                if (faceEmbedder.IsDisposed)
+                                {
+                                    embeddingArray[i] = new float[FaceEmbedder.EmbeddingSize];
+                                    return;
+                                }
                                 using var img = augmentationImages[i]; // Safe copy per thread
-                                embeddingArray[i] = faceEmbedder.Forward(img);
+                                embeddingArray[i] = faceEmbedder.SafeForward(img);
+                            }
+                            catch (ObjectDisposedException ex)
+                            {
+                                logCallback?.Invoke("FaceEmbedder was disposed during processing.");
+                                embeddingArray[i] = new float[FaceEmbedder.EmbeddingSize];
                             }
                             catch (Exception ex)
                             {

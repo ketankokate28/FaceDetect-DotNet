@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using UMapx.Core;
 using UMapx.Imaging;
+using static System.Collections.Specialized.BitVector32;
 
 namespace FaceONNX
 {
@@ -42,22 +43,7 @@ namespace FaceONNX
             //options.AppendExecutionProvider_DML(); // ✅ DirectML instead of CUDA
             // options.AppendExecutionProvider_CPU();
             //options.AppendExecutionProvider_CUDA();
-            if (TrySetExecutionProvider(options, ExecutionProviderManager.CUDA))
-            {
-                Console.WriteLine("Using CUDA execution provider.");
-                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CUDA);
-            }
-            else if (TrySetExecutionProvider(options, ExecutionProviderManager.DirectML))
-            {
-                Console.WriteLine("Using DirectML execution provider.");
-                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.DirectML);
-            }
-            else
-            {
-                Console.WriteLine("Using CPU execution provider.");
-                ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CPU);
-                options.AppendExecutionProvider_CPU();
-            }
+            TrySetExecutionProvider(options);
 
             var modelPath = Path.Combine(AppContext.BaseDirectory, "recognition_resnet27_fully_dynamic_batch.onnx");
             _session = new InferenceSession(modelPath, options);
@@ -74,32 +60,59 @@ namespace FaceONNX
 
             _session.Run(inputs).ToList().ForEach(o => o.Dispose());
         }
-        private bool TrySetExecutionProvider(SessionOptions options, string provider)
+        private bool TrySetExecutionProvider(SessionOptions options)
         {
-            try
+            var availableProviders = OrtEnv.Instance().GetAvailableProviders()
+                .Select(p => p.ToLowerInvariant())
+                .ToList();
+
+            if (availableProviders.Contains("cudaexecutionprovider".ToLowerInvariant()))
             {
-                // Attempt to append the provider to the session options
-                switch (provider)
+                try
                 {
-                    case ExecutionProviderManager.CUDA:
-                        options.AppendExecutionProvider_CUDA();
-                        return true;
-                    case ExecutionProviderManager.DirectML:
-                        options.AppendExecutionProvider_DML();
-                        return true;
-                    case ExecutionProviderManager.CPU:
-                        options.AppendExecutionProvider_CPU();
-                        return true;
-                    default:
-                        return false;
+                    options.AppendExecutionProvider_CUDA();
+                    Console.WriteLine("Using CUDA execution provider.");
+                    ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CUDA);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error using CUDA provider: {ex.Message}");
                 }
             }
-            catch (Exception ex)
+
+            if (availableProviders.Contains("dmlexecutionprovider".ToLowerInvariant()))
             {
-                // If we catch an exception, it means the provider is not available
-                Console.WriteLine($"Error appending {provider} provider: {ex.Message}");
-                return false;
+                try
+                {
+                    options.AppendExecutionProvider_DML();
+                    Console.WriteLine("Using DirectML execution provider.");
+                    ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.DirectML);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error using DirectML provider: {ex.Message}");
+                }
             }
+
+            if (availableProviders.Contains("cpuexecutionprovider".ToLowerInvariant()))
+            {
+                try
+                {
+                    options.AppendExecutionProvider_CPU();
+                    Console.WriteLine("Using CPU execution provider.");
+                    ExecutionProviderManager.SetExecutionProvider(ExecutionProviderManager.CPU);
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error using CPU provider: {ex.Message}");
+                }
+            }
+
+            Console.WriteLine("No known execution provider available.");
+            return false;
         }
         /// <summary>
         /// Initializes face embedder.
@@ -123,6 +136,17 @@ namespace FaceONNX
         {
             var rgb = image.ToRGB(false);
             return Forward(rgb);
+        }
+        public float[] SafeForward(Bitmap image)
+        {
+            if (_disposed)
+                throw new ObjectDisposedException(nameof(FaceEmbedder));
+
+            lock (_sessionLock)
+            {
+                var rgb = image.ToRGB(false);
+                return Forward(rgb);
+            }
         }
 
         /// <inheritdoc/>
@@ -161,6 +185,10 @@ namespace FaceONNX
 
             lock (_sessionLock)
             {
+                if (_disposed || _session == null)
+                {
+                    throw new ObjectDisposedException(nameof(FaceEmbedder));
+                }
                 outputs = _session.Run(inputs);
             }
             var results = outputs.ToArray();  // Convert to array if needed
@@ -231,7 +259,6 @@ namespace FaceONNX
             return embeddingList;
         }
 
-
         #endregion
 
         #region IDisposable
@@ -251,12 +278,15 @@ namespace FaceONNX
             {
                 if (disposing)
                 {
-                    _session?.Dispose();
+                    lock (_sessionLock)
+                    {
+                        _session?.Dispose();
+                    }
                 }
-
                 _disposed = true;
             }
         }
+        public bool IsDisposed => _disposed;
 
         /// <summary>
         /// Destructor.

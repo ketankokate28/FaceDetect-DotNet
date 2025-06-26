@@ -2,6 +2,7 @@
 using Model;
 using System;
 using System.Collections.Concurrent;
+using UMapx.Window;
 //using System.Collections.Generic;
 //using System.Text;
 //using static Face_Matcher_UI.Form1;
@@ -23,6 +24,8 @@ namespace Face_Matcher_UI
         private readonly string _resultDir;
         private readonly string _tempResultDir;
         private readonly Action<string> _logCallback;
+        private volatile bool _isRunning = false;
+        public bool IsRunning => _isRunning;
 
         public StandaloneProcessingWorker(
             Dictionary<string, float[]> suspectEmbeddings,
@@ -87,15 +90,30 @@ namespace Face_Matcher_UI
 
                     if (batch.Count > 0)
                     {
-                        _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
+
+
+                            _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
                             _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
-                        batch.Clear();
+                            batch.Clear();
+                    
                     }
+                    await Task.Delay(5, _token);
+                }
+                catch (OperationCanceledException)
+                {
+                    _logCallback?.Invoke("Processing loop canceled.");
+                    break; // Gracefully exit loop
+                }
+                catch (ObjectDisposedException ex)
+                {
+                    _logCallback?.Invoke($"Object disposed during processing: {ex.Message}");
+                    break;
                 }
                 catch (Exception ex)
                 {
                     _logCallback?.Invoke($"Worker loop error: {ex.Message}");
                 }
+                //await Task.Delay(50, _token);
             }
         }
         private async Task ProcessLoop_CUDA()
