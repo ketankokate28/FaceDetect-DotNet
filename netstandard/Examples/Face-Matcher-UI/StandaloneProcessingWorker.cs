@@ -25,6 +25,7 @@ namespace Face_Matcher_UI
         private readonly string _tempResultDir;
         private readonly Action<string> _logCallback;
         private volatile bool _isRunning = false;
+        public DateTime LastActiveTime { get; private set; } = DateTime.Now;
         public bool IsRunning => _isRunning;
 
         public StandaloneProcessingWorker(
@@ -94,7 +95,8 @@ namespace Face_Matcher_UI
 
                             _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
                             _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
-                            batch.Clear();
+                        LastActiveTime = DateTime.Now; // Update last active time
+                        batch.Clear();
                     
                     }
                     await Task.Delay(5, _token);
@@ -137,8 +139,10 @@ namespace Face_Matcher_UI
                     {
                         _faceMatcher.RunBatch_CUDA(_suspectEmbeddings, batch.ToArray(),
                             _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                        LastActiveTime = DateTime.Now; // Update last active time
                         batch.Clear();
                     }
+                    await Task.Delay(5, _token);
                 }
                 catch (OperationCanceledException)
                 {

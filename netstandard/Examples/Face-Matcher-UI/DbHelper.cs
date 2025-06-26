@@ -198,6 +198,38 @@ namespace Face_Matcher_UI
 
             return results;
         }
+        public static List<MatchLog> GetMatchedLogsForSuspect(int suspectId)
+        {
+            var results = new List<MatchLog>();
+            using var conn = new SQLiteConnection(connectionString);
+            conn.Open();
+
+            string sql = @"SELECT id, capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date 
+                   FROM Matchfacelogs
+                   WHERE suspect_id = @SuspectId
+                   ORDER BY capture_time DESC";
+
+            using var cmd = new SQLiteCommand(sql, conn);
+            cmd.Parameters.AddWithValue("@SuspectId", suspectId);
+
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                results.Add(new MatchLog
+                {
+                    Id = reader.GetInt32(0),
+                    CaptureTime = DateTime.Parse(reader.GetString(1)),
+                    FrameBase64 = reader.GetString(2),
+                    CctvId = reader.GetInt32(3),
+                    SuspectId = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
+                    Suspect = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Distance = reader.GetFloat(6),
+                    CreatedDate = DateTime.Parse(reader.GetString(7))
+                });
+            }
+
+            return results;
+        }
 
 
     }
@@ -207,5 +239,15 @@ namespace Face_Matcher_UI
         public DateTime CaptureTime { get; set; }
         public float Distance { get; set; }
     }
-
+    public class MatchLog
+    {
+        public int Id { get; set; }
+        public DateTime CaptureTime { get; set; }
+        public string FrameBase64 { get; set; }
+        public int CctvId { get; set; }
+        public int SuspectId { get; set; }
+        public string Suspect { get; set; }
+        public float Distance { get; set; }
+        public DateTime CreatedDate { get; set; }
+    }
 }

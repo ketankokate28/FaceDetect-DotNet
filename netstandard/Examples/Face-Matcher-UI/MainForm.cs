@@ -11,6 +11,7 @@ using System.Collections.Concurrent;
 using FaceONNX;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Button = System.Windows.Forms.Button;
+using UMapx.Window;
 
 namespace UI
 {
@@ -50,6 +51,16 @@ namespace UI
         private System.Windows.Forms.Timer searchTimer;
         private DateTime searchStartTime;
         private int dotCount = 0;
+        private System.Windows.Forms.Timer idleMonitorTimer;
+        private Action<string> _logCallback;
+        private Button btnStart;
+        private Button btnStop;
+        private LinkLabel btnExport;
+        private System.Windows.Forms.Timer matchUpdateTimer;
+        private HashSet<string> knownMatchSet = new HashSet<string>();
+        private List<MatchLog> matchedLogs;
+        private HashSet<int> knownMatchIds; // Use IDs instead of comparing strings
+
         public SuspectListControl()
         {
             InitializeComponent();
@@ -211,7 +222,10 @@ namespace UI
         }
         private void LoadMatchedFramesPanel(Control parent, int suspectId)
         {
-            matchedBase64Images = DbHelper.GetMatchedFramesForSuspect(suspectId);
+            //matchedBase64Images = DbHelper.GetMatchedFramesForSuspect(suspectId);
+            matchedLogs = DbHelper.GetMatchedLogsForSuspect(suspectId);
+            knownMatchIds = new HashSet<int>(matchedLogs.Select(m => m.Id));
+            //knownMatchSet = new HashSet<string>(matchedBase64Images);
             currentMatchImageIndex = 0;
 
             // Get the left preview panel from Tag (set in AddImagePreviewPanel)
@@ -293,49 +307,86 @@ namespace UI
                 layout.Controls.Add(verticalButtonPanel, 1, 0); // center column
                 layout.PerformLayout();
             }
+            // === Start Timer for Live Frame Updates ===
+            if (matchUpdateTimer != null)
+            {
+                matchUpdateTimer.Stop();
+                matchUpdateTimer.Dispose();
+            }
+
+            matchUpdateTimer = new System.Windows.Forms.Timer();
+            matchUpdateTimer.Interval = 10000; // 10 seconds
+            matchUpdateTimer.Tick += (s, e) =>
+            {
+                var newMatches = DbHelper.GetMatchedLogsForSuspect(suspectId);
+                bool added = false;
+
+                foreach (var match in newMatches)
+                {
+                    if (!knownMatchIds.Contains(match.Id))
+                    {
+                        matchedLogs.Add(match);
+                        knownMatchIds.Add(match.Id);
+                        added = true;
+                    }
+                }
+
+                if (added)
+                {
+                    if (matchImageViewer != null && matchImageViewer.Image == null)
+                    {
+                        ShowMatchImage(currentMatchImageIndex);
+                    }
+
+                    // Optional: refresh to newest image
+                    ShowMatchImage(matchedLogs.Count - 1);
+                }
+            };
+            matchUpdateTimer.Start();
+
         }
 
         private void ShowMatchImage(int delta)
         {
-            if (matchedBase64Images == null || matchedBase64Images.Count == 0)
+            if (matchedLogs == null || matchedLogs.Count == 0)
             {
-                if (matchImageViewer != null)
-                    matchImageViewer.Image = null;
+                matchImageViewer?.Image?.Dispose();
+                matchImageViewer.Image = null;
 
                 if (btnPrev != null) btnPrev.Enabled = false;
                 if (btnNext != null) btnNext.Enabled = false;
                 if (lblImageCounter != null) lblImageCounter.Text = "0 / 0";
 
-                // Optional: Force layout refresh to align buttons and labels
                 btnPrev?.Refresh();
                 btnNext?.Refresh();
                 lblImageCounter?.Refresh();
                 this.PerformLayout();
-
                 return;
             }
 
-            int total = matchedBase64Images.Count;
+            int total = matchedLogs.Count;
             currentMatchImageIndex = Math.Max(0, Math.Min(currentMatchImageIndex + delta, total - 1));
 
             try
             {
-                var b64 = matchedBase64Images[currentMatchImageIndex];
+                var b64 = matchedLogs[currentMatchImageIndex].FrameBase64;
                 byte[] imageBytes = Convert.FromBase64String(b64);
                 using var ms = new System.IO.MemoryStream(imageBytes);
 
                 matchImageViewer?.Image?.Dispose();
-                if (matchImageViewer != null)
-                    matchImageViewer.Image = new Bitmap(Image.FromStream(ms));
+                matchImageViewer.Image = new Bitmap(Image.FromStream(ms));
             }
             catch
             {
-                if (matchImageViewer != null)
-                    matchImageViewer.Image = null;
+                matchImageViewer?.Image?.Dispose();
+                matchImageViewer.Image = null;
             }
 
-            if (btnPrev != null) btnPrev.Enabled = currentMatchImageIndex > 0;
-            if (btnNext != null) btnNext.Enabled = currentMatchImageIndex < total - 1;
+            if (btnPrev != null)
+                btnPrev.Enabled = currentMatchImageIndex > 0;
+
+            if (btnNext != null)
+                btnNext.Enabled = currentMatchImageIndex < total - 1;
 
             if (lblImageCounter != null)
                 lblImageCounter.Text = $"{currentMatchImageIndex + 1} / {total}";
@@ -384,7 +435,7 @@ namespace UI
                 Margin = new Padding(10, 0, 10, 0)
             };
 
-            var btnStart = new Button
+             btnStart = new Button
             {
                 Text = "▶ Start Search",
                 AutoSize = true,
@@ -392,7 +443,7 @@ namespace UI
                 Margin = new Padding(10, 0, 10, 0)
             };
 
-            var btnStop = new Button
+             btnStop = new Button
             {
                 Text = "⏹ Stop Search",
                 AutoSize = true,
@@ -401,7 +452,7 @@ namespace UI
                 Margin = new Padding(10, 0, 10, 0)
             };
 
-            var btnExport = new LinkLabel
+             btnExport = new LinkLabel
             {
                 Text = "Export Search Report",
                 AutoSize = true,
@@ -525,7 +576,7 @@ namespace UI
                 };
             }
             searchTimer.Start();
-
+           
             //if (loaderLabel != null)
             //    loaderLabel.Visible = true;
             // Step 1: Reload suspect
@@ -536,6 +587,7 @@ namespace UI
             var token = _cts.Token;
 
             Task.Run(() => Process(token), token);
+
             // TODO: Add actual search start logic here
             //MessageBox.Show($"Search started on folder:\n{selectedFolderPath}");
         }
@@ -556,13 +608,29 @@ namespace UI
 
             var sharedDetector = new FaceDetector();
             var sharedEmbedder = new FaceEmbedder();
-            workers = Enumerable.Range(0, 4)
-                .Select(_ => new StandaloneProcessingWorker(cachedSuspectEmbeddings, ResultDir, TempResultDir, message =>
+            void LogHandler(string msg)
+            {
+                _logCallback?.Invoke(msg);
+
+                if (msg.Contains("Idle timeout"))
                 {
-                    // logging callback
-                }, stoppingToken, sharedDetector, sharedEmbedder))
-                .ToArray();
+                    // Safe UI stop from worker thread
+                    InvokeStopSearch();
+                }
+            }
+
+            workers = Enumerable.Range(0, 4)
+     .Select(_ => new StandaloneProcessingWorker(
+         cachedSuspectEmbeddings,
+         ResultDir,
+         TempResultDir,
+        LogHandler,  // <== Pass from outer scope
+         stoppingToken,
+         sharedDetector,
+         sharedEmbedder))
+     .ToArray();
             CopyAllImagesToFolder(selectedFolderPath, FramesDir);
+            _ = MonitorWorkerIdleLoopAsync(stoppingToken);
             //foreach (var img in allImageFiles)
             //{
             //    if (!processedImages.ContainsKey(img))
@@ -644,6 +712,12 @@ namespace UI
 
             // Optional: reset text for next run
             loaderTextLabel.Text = "Searching...";
+
+            matchUpdateTimer?.Stop();
+            matchUpdateTimer?.Dispose();
+            matchUpdateTimer = null;
+
+
             _cts?.Cancel();
 
             // Show popup while waiting
@@ -680,6 +754,7 @@ namespace UI
             }
             processedImages.Clear();
             isProcessingRunning = false;
+
             // TODO: Add actual stop logic here
             //MessageBox.Show("Search stopped.");
         }
@@ -946,6 +1021,47 @@ namespace UI
             {
 
             }
+        }
+        public void SetLogCallback(Action<string> callback)
+        {
+            _logCallback = callback;
+        }
+        private async Task MonitorWorkerIdleLoopAsync(CancellationToken token)
+        {
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(10), token); // Check every 10s
+
+                    if (workers != null && workers.All(w =>
+                        (DateTime.Now - w.LastActiveTime).TotalSeconds > 10))
+                    {
+                        _logCallback?.Invoke("Idle timeout: All workers inactive for 1 minute");
+                        _ = InvokeStopSearch();
+                        break;
+
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logCallback?.Invoke($"Idle monitor error: {ex.Message}");
+                }
+            }
+        }
+        private async Task InvokeStopSearch()
+        {
+            if (InvokeRequired)
+            {
+                Invoke(new Action(async () => await InvokeStopSearch()));
+                return;
+            }
+
+            HandleStopSearch(btnStart, btnStop, btnExport);
         }
         public void PrintLog()
         {
