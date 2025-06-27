@@ -15,7 +15,7 @@ namespace Face_Matcher_UI
             using var conn = new SQLiteConnection(connectionString);
             conn.Open();
 
-            //string dropTable = "DROP TABLE IF EXISTS Suspect;";
+            //string dropTable = "DROP TABLE IF EXISTS Matchfacelogs;";
             //new SQLiteCommand(dropTable, conn).ExecuteNonQuery();
 
             string createTable = @"CREATE TABLE IF NOT EXISTS Suspect (
@@ -48,12 +48,14 @@ namespace Face_Matcher_UI
     suspect_id INTEGER,
     suspect TEXT,
     distance REAL NOT NULL,
-    created_date TEXT NOT NULL
+    created_date TEXT NOT NULL,
+    filename TEXT,
+    frametime TEXT
 );";
             new SQLiteCommand(createMatchLogsTable, conn).ExecuteNonQuery();
         }
 
-        public static void InsertOrUpdateSuspect(Suspect suspect)
+        public static int InsertOrUpdateSuspect(Suspect suspect)
         {
             using var conn = new SQLiteConnection(connectionString);
             conn.Open();
@@ -68,6 +70,8 @@ namespace Face_Matcher_UI
                 using var cmd = new SQLiteCommand(insertSql, conn);
                 suspect.AddParams(cmd);
                 cmd.ExecuteNonQuery();
+                using var idCmd = new SQLiteCommand("SELECT last_insert_rowid();", conn);
+                suspect.SuspectId = Convert.ToInt32(idCmd.ExecuteScalar());
             }
             else
             {
@@ -83,6 +87,7 @@ namespace Face_Matcher_UI
                 cmd.Parameters.AddWithValue("@SuspectId", suspect.SuspectId);
                 cmd.ExecuteNonQuery();
             }
+            return suspect.SuspectId;
         }
 
         public static List<Suspect> GetAllSuspects()
@@ -141,7 +146,15 @@ namespace Face_Matcher_UI
 
             return null; // suspect not found
         }
-        public static void InsertMatchFaceLog(string captureTime, string frame, int cctvId, int? suspectId, string suspectName, float distance)
+        public static void InsertMatchFaceLog(
+     string captureTime,
+     string frame,
+     int cctvId,
+     int? suspectId,
+     string suspectName,
+     float distance,
+     string filename,
+     string frametime)
         {
             string formattedCaptureTime = captureTime ?? DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             string formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
@@ -151,18 +164,20 @@ namespace Face_Matcher_UI
 
             using var cmd = new SQLiteCommand(@"
         INSERT INTO Matchfacelogs 
-        (capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date)
+        (capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date, filename, frametime)
         VALUES 
-        (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date);
+        (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date, @filename, @frametime);
     ", conn);
 
             cmd.Parameters.AddWithValue("@capture_time", formattedCaptureTime);
             cmd.Parameters.AddWithValue("@frame", frame);
             cmd.Parameters.AddWithValue("@cctv_id", cctvId);
-            cmd.Parameters.AddWithValue("@suspect_id", (object?)suspectId ?? DBNull.Value); // handle null
+            cmd.Parameters.AddWithValue("@suspect_id", (object?)suspectId ?? DBNull.Value);
             cmd.Parameters.AddWithValue("@suspect", suspectName ?? (object)DBNull.Value);
             cmd.Parameters.AddWithValue("@distance", distance);
             cmd.Parameters.AddWithValue("@created_date", formattedCreatedDate);
+            cmd.Parameters.AddWithValue("@filename", filename ?? (object)DBNull.Value);
+            cmd.Parameters.AddWithValue("@frametime", frametime ?? (object)DBNull.Value);
 
             try
             {
@@ -204,7 +219,7 @@ namespace Face_Matcher_UI
             using var conn = new SQLiteConnection(connectionString);
             conn.Open();
 
-            string sql = @"SELECT id, capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date 
+            string sql = @"SELECT id, capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date, filename, frametime 
                    FROM Matchfacelogs
                    WHERE suspect_id = @SuspectId
                    ORDER BY capture_time DESC";
@@ -224,7 +239,9 @@ namespace Face_Matcher_UI
                     SuspectId = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
                     Suspect = reader.IsDBNull(5) ? null : reader.GetString(5),
                     Distance = reader.GetFloat(6),
-                    CreatedDate = DateTime.Parse(reader.GetString(7))
+                    CreatedDate = DateTime.Parse(reader.GetString(7)),
+                    Filename = reader.IsDBNull(8) ? null : reader.GetString(8),
+                    Frametime = reader.IsDBNull(9) ? null : reader.GetString(9)
                 });
             }
 
@@ -249,5 +266,8 @@ namespace Face_Matcher_UI
         public string Suspect { get; set; }
         public float Distance { get; set; }
         public DateTime CreatedDate { get; set; }
+        public string Filename { get; set; }
+        public string Frametime { get; set; }
+
     }
 }

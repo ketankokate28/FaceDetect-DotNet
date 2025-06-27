@@ -524,7 +524,7 @@ namespace Face_Matcher_UI
             }
                 finally
                 {
-                File.Delete(imageFile);
+                //File.Delete(imageFile);
                 bitmap.Dispose();
                 }
         }

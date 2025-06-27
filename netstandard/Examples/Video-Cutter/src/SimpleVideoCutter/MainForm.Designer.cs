@@ -65,6 +65,15 @@
             toolStripButtonSelectionGoToStart = new System.Windows.Forms.ToolStripButton();
             toolStripButtonSelectionGoToEnd = new System.Windows.Forms.ToolStripButton();
             toolStripButtonSelectionEnqueue = new System.Windows.Forms.ToolStripButton();
+            toolStripTasks = new System.Windows.Forms.ToolStrip();
+            toolStripButtonTasksShow = new System.Windows.Forms.ToolStripButton();
+            toolStripInternet = new System.Windows.Forms.ToolStrip();
+            toolStripButtonInternetVersionCheck = new System.Windows.Forms.ToolStripButton();
+            toolStripPlayback = new System.Windows.Forms.ToolStrip();
+            toolStripButtonPlabackPlayPause = new System.Windows.Forms.ToolStripButton();
+            toolStripButtonPlabackMute = new System.Windows.Forms.ToolStripButton();
+            toolStripButtonPlabackPrevFrame = new System.Windows.Forms.ToolStripButton();
+            toolStripButtonPlabackNextFrame = new System.Windows.Forms.ToolStripButton();
             toolStripFile = new System.Windows.Forms.ToolStrip();
             toolStripButtonFileOpen = new System.Windows.Forms.ToolStripButton();
             toolStripButtonFilePrev = new System.Windows.Forms.ToolStripButton();
@@ -80,15 +89,6 @@
             toolStripMenuItemLangChinese = new System.Windows.Forms.ToolStripMenuItem();
             toolStripMenuItemLangJapanese = new System.Windows.Forms.ToolStripMenuItem();
             toolStripMenuItemLangPolish = new System.Windows.Forms.ToolStripMenuItem();
-            toolStripPlayback = new System.Windows.Forms.ToolStrip();
-            toolStripButtonPlabackPlayPause = new System.Windows.Forms.ToolStripButton();
-            toolStripButtonPlabackMute = new System.Windows.Forms.ToolStripButton();
-            toolStripButtonPlabackPrevFrame = new System.Windows.Forms.ToolStripButton();
-            toolStripButtonPlabackNextFrame = new System.Windows.Forms.ToolStripButton();
-            toolStripInternet = new System.Windows.Forms.ToolStrip();
-            toolStripButtonInternetVersionCheck = new System.Windows.Forms.ToolStripButton();
-            toolStripTasks = new System.Windows.Forms.ToolStrip();
-            toolStripButtonTasksShow = new System.Windows.Forms.ToolStripButton();
             timerHoverPositionChanged = new System.Windows.Forms.Timer(components);
             toolStripContainerMain.BottomToolStripPanel.SuspendLayout();
             toolStripContainerMain.ContentPanel.SuspendLayout();
@@ -106,10 +106,10 @@
             contextMenuStripToolstripContainer.SuspendLayout();
             toolStripTimeline.SuspendLayout();
             toolStripSelection.SuspendLayout();
-            toolStripFile.SuspendLayout();
-            toolStripPlayback.SuspendLayout();
-            toolStripInternet.SuspendLayout();
             toolStripTasks.SuspendLayout();
+            toolStripInternet.SuspendLayout();
+            toolStripPlayback.SuspendLayout();
+            toolStripFile.SuspendLayout();
             SuspendLayout();
             // 
             // toolStripContainerMain
@@ -357,6 +357,69 @@
             resources.ApplyResources(toolStripButtonSelectionEnqueue, "toolStripButtonSelectionEnqueue");
             toolStripButtonSelectionEnqueue.Name = "toolStripButtonSelectionEnqueue";
             // 
+            // toolStripTasks
+            // 
+            resources.ApplyResources(toolStripTasks, "toolStripTasks");
+            toolStripTasks.ImageScalingSize = new System.Drawing.Size(32, 32);
+            toolStripTasks.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButtonTasksShow });
+            toolStripTasks.Name = "toolStripTasks";
+            // 
+            // toolStripButtonTasksShow
+            // 
+            toolStripButtonTasksShow.CheckOnClick = true;
+            toolStripButtonTasksShow.Image = Properties.Resources.streamline_icon_task_list_clock_32x32;
+            resources.ApplyResources(toolStripButtonTasksShow, "toolStripButtonTasksShow");
+            toolStripButtonTasksShow.Name = "toolStripButtonTasksShow";
+            toolStripButtonTasksShow.CheckedChanged += toolStripButtonShowTasks_CheckedChanged;
+            // 
+            // toolStripInternet
+            // 
+            resources.ApplyResources(toolStripInternet, "toolStripInternet");
+            toolStripInternet.ImageScalingSize = new System.Drawing.Size(32, 32);
+            toolStripInternet.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButtonInternetVersionCheck });
+            toolStripInternet.Name = "toolStripInternet";
+            toolStripInternet.ItemClicked += toolStripInternet_ItemClicked;
+            // 
+            // toolStripButtonInternetVersionCheck
+            // 
+            toolStripButtonInternetVersionCheck.BackColor = System.Drawing.SystemColors.Control;
+            resources.ApplyResources(toolStripButtonInternetVersionCheck, "toolStripButtonInternetVersionCheck");
+            toolStripButtonInternetVersionCheck.Image = Properties.Resources.streamline_icon_laptop_download_32x32;
+            toolStripButtonInternetVersionCheck.Name = "toolStripButtonInternetVersionCheck";
+            toolStripButtonInternetVersionCheck.Click += toolStripButtonInternetVersionCheck_Click;
+            // 
+            // toolStripPlayback
+            // 
+            resources.ApplyResources(toolStripPlayback, "toolStripPlayback");
+            toolStripPlayback.ImageScalingSize = new System.Drawing.Size(32, 32);
+            toolStripPlayback.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButtonPlabackPlayPause, toolStripButtonPlabackMute, toolStripButtonPlabackPrevFrame, toolStripButtonPlabackNextFrame });
+            toolStripPlayback.Name = "toolStripPlayback";
+            toolStripPlayback.ItemClicked += toolStripPlayback_ItemClicked;
+            // 
+            // toolStripButtonPlabackPlayPause
+            // 
+            toolStripButtonPlabackPlayPause.Image = Properties.Resources.streamline_icon_controls_play_32x32;
+            resources.ApplyResources(toolStripButtonPlabackPlayPause, "toolStripButtonPlabackPlayPause");
+            toolStripButtonPlabackPlayPause.Name = "toolStripButtonPlabackPlayPause";
+            // 
+            // toolStripButtonPlabackMute
+            // 
+            toolStripButtonPlabackMute.Image = Properties.Resources.streamline_icon_volume_control_mute_32x32;
+            resources.ApplyResources(toolStripButtonPlabackMute, "toolStripButtonPlabackMute");
+            toolStripButtonPlabackMute.Name = "toolStripButtonPlabackMute";
+            // 
+            // toolStripButtonPlabackPrevFrame
+            // 
+            toolStripButtonPlabackPrevFrame.Image = Properties.Resources.streamline_icon_arrow_button_circle_left_32x32;
+            resources.ApplyResources(toolStripButtonPlabackPrevFrame, "toolStripButtonPlabackPrevFrame");
+            toolStripButtonPlabackPrevFrame.Name = "toolStripButtonPlabackPrevFrame";
+            // 
+            // toolStripButtonPlabackNextFrame
+            // 
+            toolStripButtonPlabackNextFrame.Image = Properties.Resources.streamline_icon_arrow_button_circle_right_32x32;
+            resources.ApplyResources(toolStripButtonPlabackNextFrame, "toolStripButtonPlabackNextFrame");
+            toolStripButtonPlabackNextFrame.Name = "toolStripButtonPlabackNextFrame";
+            // 
             // toolStripFile
             // 
             resources.ApplyResources(toolStripFile, "toolStripFile");
@@ -441,68 +504,6 @@
             toolStripMenuItemLangPolish.Name = "toolStripMenuItemLangPolish";
             resources.ApplyResources(toolStripMenuItemLangPolish, "toolStripMenuItemLangPolish");
             // 
-            // toolStripPlayback
-            // 
-            resources.ApplyResources(toolStripPlayback, "toolStripPlayback");
-            toolStripPlayback.ImageScalingSize = new System.Drawing.Size(32, 32);
-            toolStripPlayback.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButtonPlabackPlayPause, toolStripButtonPlabackMute, toolStripButtonPlabackPrevFrame, toolStripButtonPlabackNextFrame });
-            toolStripPlayback.Name = "toolStripPlayback";
-            toolStripPlayback.ItemClicked += toolStripPlayback_ItemClicked;
-            // 
-            // toolStripButtonPlabackPlayPause
-            // 
-            toolStripButtonPlabackPlayPause.Image = Properties.Resources.streamline_icon_controls_play_32x32;
-            resources.ApplyResources(toolStripButtonPlabackPlayPause, "toolStripButtonPlabackPlayPause");
-            toolStripButtonPlabackPlayPause.Name = "toolStripButtonPlabackPlayPause";
-            // 
-            // toolStripButtonPlabackMute
-            // 
-            toolStripButtonPlabackMute.Image = Properties.Resources.streamline_icon_volume_control_mute_32x32;
-            resources.ApplyResources(toolStripButtonPlabackMute, "toolStripButtonPlabackMute");
-            toolStripButtonPlabackMute.Name = "toolStripButtonPlabackMute";
-            // 
-            // toolStripButtonPlabackPrevFrame
-            // 
-            toolStripButtonPlabackPrevFrame.Image = Properties.Resources.streamline_icon_arrow_button_circle_left_32x32;
-            resources.ApplyResources(toolStripButtonPlabackPrevFrame, "toolStripButtonPlabackPrevFrame");
-            toolStripButtonPlabackPrevFrame.Name = "toolStripButtonPlabackPrevFrame";
-            // 
-            // toolStripButtonPlabackNextFrame
-            // 
-            toolStripButtonPlabackNextFrame.Image = Properties.Resources.streamline_icon_arrow_button_circle_right_32x32;
-            resources.ApplyResources(toolStripButtonPlabackNextFrame, "toolStripButtonPlabackNextFrame");
-            toolStripButtonPlabackNextFrame.Name = "toolStripButtonPlabackNextFrame";
-            // 
-            // toolStripInternet
-            // 
-            resources.ApplyResources(toolStripInternet, "toolStripInternet");
-            toolStripInternet.ImageScalingSize = new System.Drawing.Size(32, 32);
-            toolStripInternet.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButtonInternetVersionCheck });
-            toolStripInternet.Name = "toolStripInternet";
-            toolStripInternet.ItemClicked += toolStripInternet_ItemClicked;
-            // 
-            // toolStripButtonInternetVersionCheck
-            // 
-            toolStripButtonInternetVersionCheck.BackColor = System.Drawing.SystemColors.Control;
-            resources.ApplyResources(toolStripButtonInternetVersionCheck, "toolStripButtonInternetVersionCheck");
-            toolStripButtonInternetVersionCheck.Image = Properties.Resources.streamline_icon_laptop_download_32x32;
-            toolStripButtonInternetVersionCheck.Name = "toolStripButtonInternetVersionCheck";
-            // 
-            // toolStripTasks
-            // 
-            resources.ApplyResources(toolStripTasks, "toolStripTasks");
-            toolStripTasks.ImageScalingSize = new System.Drawing.Size(32, 32);
-            toolStripTasks.Items.AddRange(new System.Windows.Forms.ToolStripItem[] { toolStripButtonTasksShow });
-            toolStripTasks.Name = "toolStripTasks";
-            // 
-            // toolStripButtonTasksShow
-            // 
-            toolStripButtonTasksShow.CheckOnClick = true;
-            toolStripButtonTasksShow.Image = Properties.Resources.streamline_icon_task_list_clock_32x32;
-            resources.ApplyResources(toolStripButtonTasksShow, "toolStripButtonTasksShow");
-            toolStripButtonTasksShow.Name = "toolStripButtonTasksShow";
-            toolStripButtonTasksShow.CheckedChanged += toolStripButtonShowTasks_CheckedChanged;
-            // 
             // timerHoverPositionChanged
             // 
             timerHoverPositionChanged.Interval = 50;
@@ -547,14 +548,14 @@
             toolStripTimeline.PerformLayout();
             toolStripSelection.ResumeLayout(false);
             toolStripSelection.PerformLayout();
-            toolStripFile.ResumeLayout(false);
-            toolStripFile.PerformLayout();
-            toolStripPlayback.ResumeLayout(false);
-            toolStripPlayback.PerformLayout();
-            toolStripInternet.ResumeLayout(false);
-            toolStripInternet.PerformLayout();
             toolStripTasks.ResumeLayout(false);
             toolStripTasks.PerformLayout();
+            toolStripInternet.ResumeLayout(false);
+            toolStripInternet.PerformLayout();
+            toolStripPlayback.ResumeLayout(false);
+            toolStripPlayback.PerformLayout();
+            toolStripFile.ResumeLayout(false);
+            toolStripFile.PerformLayout();
             ResumeLayout(false);
         }
 

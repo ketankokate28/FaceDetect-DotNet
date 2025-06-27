@@ -297,26 +297,21 @@ namespace Model
                 TextFont = new Font("Segoe UI", 10, FontStyle.Bold),
                 Transparency = 0
             };
-
+            var processingTasks = new List<Task>();
             foreach (var imageFile in imageFiles)
             {
-                var sw = Stopwatch.StartNew();
                 try
                 {
                     using var bitmap = LoadBitmapUnlocked(imageFile);
                     using var graphics = Graphics.FromImage(bitmap);
 
-                    var sw1 = Stopwatch.StartNew();
                     var groupFaces = faceDetector.Forward(bitmap);
-                    sw1.Stop();
-                    logCallback?.Invoke($"Image detects in {sw1.ElapsedMilliseconds} ms");
+
 
                     if (groupFaces.Length == 0)
                     {
-                        logCallback?.Invoke($"No faces detected in {Path.GetFileName(imageFile)}");
                         File.Delete(imageFile);
-                        sw.Stop();
-                        logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+                       
                         continue;
                     }
 
@@ -332,11 +327,8 @@ namespace Model
                         faceAugmentationMap.Add((augmentations.Count, face));
                     }
 
-                    var sw2 = Stopwatch.StartNew();
                     var allEmbeddings = faceEmbedder.ForwardBatch(allAugmentedImages);
-                    sw2.Stop();
-                    logCallback?.Invoke($"faceEmbedder batch in {sw2.ElapsedMilliseconds} ms");
-
+                   
                     bool matchedAny = false;
 
                     int cursor = 0;
@@ -359,32 +351,41 @@ namespace Model
 
                         if (bestMatch.Distance < MatchThreshold)
                         {
-                            double similarityPercent = (1.0 - bestMatch.Distance) * 100.0;
+                            double calculatedScore = bestMatch.Distance - 0.20;
+                            double similarityPercent = (1.0 - calculatedScore) * 100.0;
                             var nameBox = new Rectangle(face.Box.X, face.Box.Y - 20, Math.Max(face.Box.Width, 150), 20);
                             painter.Draw(graphics, new PaintData { Rectangle = face.Box });
                             graphics.DrawString(bestMatch.Name + " " + Math.Round(similarityPercent) + "%", painter.TextFont, Brushes.White, nameBox.Location);
                             logCallback?.Invoke($"Matched suspect: {bestMatch.Name} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
+                            Bitmap clonedBitmap = (Bitmap)bitmap.Clone();
+                            processingTasks.Add(
+                 ProcessAndLogMatchAsync(bestMatch.Name, (float)calculatedScore, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
+           );
                         }
                         else
                         {
-                            logCallback?.Invoke($"No match for face in {Path.GetFileName(imageFile)}");
+                           // logCallback?.Invoke($"No match for face in {Path.GetFileName(imageFile)}");
                         }
                     }
 
                     if (matchedAny)
                     {
-                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
-                        bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));
-                        File.Delete(imageFile);
+                        // File.Delete(imageFile);
+                        // bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        //bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));                       
+                        //logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
+                        //InsertMatchFaceLog("", Path.Combine(resultDir, Path.GetFileName(imageFile)), 1, bestMatchID, bestMatchName, bestMatchDistance);
                     }
                     else
                     {
                         File.Delete(imageFile);
+                        logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
+
                     }
 
-                    sw.Stop();
-                    logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
+                  
+                  //  logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
                 }
                 catch (Exception ex)
                 {
@@ -482,7 +483,8 @@ namespace Model
 
                             if (bestMatch.Distance < MatchThreshold)
                             {
-                                double similarityPercent = (1.0 - bestMatch.Distance) * 100.0;
+                            double calculatedScore = bestMatch.Distance - 0.20;
+                            double similarityPercent = (1.0 - calculatedScore) * 100.0;
                                 var nameBox = new Rectangle(face.Box.X, face.Box.Y - 20, Math.Max(face.Box.Width, 150), 20);
                                 painter.Draw(graphics, new PaintData { Rectangle = face.Box });
                                 graphics.DrawString(bestMatch.Name + " " + Math.Round(similarityPercent) + "%", painter.TextFont, Brushes.White, nameBox.Location);
@@ -493,7 +495,7 @@ namespace Model
                                                                               // ProcessAndLogMatch(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback);
 
                                       processingTasks.Add(
-                                ProcessAndLogMatchAsync(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
+                                ProcessAndLogMatchAsync(bestMatch.Name, (float)calculatedScore, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
                           );
                             }
                         }
@@ -512,15 +514,7 @@ namespace Model
                             logCallback?.Invoke($"No match found in {Path.GetFileName(imageFile)}");
 
                         }
-                        try
-                        {
-                           // File.Delete(imageFile);
-                            // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
-                        }
-                        catch (Exception ex)
-                        {
-                            logCallback?.Invoke($"Error deleting file {Path.GetFileName(imageFile)}: {ex.Message}");
-                        }
+                        
                         bitmap.Dispose();
                     }
                     catch (Exception ex)
@@ -546,7 +540,7 @@ namespace Model
                     string bestMatchName = "";
                     // Save images
                     bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
-                    bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));
+                    //bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));
                     //logCallback?.Invoke($"Processed and saved: {Path.GetFileName(imageFile)}");
 
                     int hyphenIndex = bestMatch.IndexOf('-');
@@ -560,14 +554,29 @@ namespace Model
                         }
                     }
 
-                    string fileName = Path.GetFileName(imageFile);
+                    //string fileName = Path.GetFileName(imageFile);
+                    string fileName = Path.GetFileNameWithoutExtension(imageFile);
                     int camId = 0;
                     string frameCaptureTime = DateTime.Now.ToString();
-
+                    string frameTimestamp = "1";
                     string imagePath = Path.Combine(resultDir, Path.GetFileName(imageFile));
-
+                  
                     if (File.Exists(imagePath))
                     {
+                        if (fileName.StartsWith("VIDXYZ_"))
+                        {
+                            string[] parts = fileName.Substring("VIDXYZ_".Length).Split('_');
+
+                            if (parts.Length >= 3)
+                            {
+                                fileName = parts[0];
+                                frameTimestamp = parts[1];
+
+                                // Send to method
+                               // YourMethod(videoFileName, frameTimestamp);
+                            }
+                        }
+
                         byte[] imageBytes = File.ReadAllBytes(imagePath);
                         string base64String = Convert.ToBase64String(imageBytes);
                         // Log to database
@@ -577,7 +586,9 @@ namespace Model
                             camId,
                             bestMatchID,
                             bestMatchName,
-                            bestDistance
+                            bestDistance,
+                            fileName,
+                            frameTimestamp
                         );
 
                     }
@@ -736,9 +747,10 @@ namespace Model
 
             return avg;
         }
-        public void InsertMatchFaceLog(string captureTime, string frameBase64, int cctvId, int? suspectId, string suspectName, float distance)
+        public void InsertMatchFaceLog(string captureTime, string frameBase64, int cctvId, int? suspectId, string suspectName, float distance, string fileName,
+                           string frameTimestamp)
         {
-            DbHelper.InsertMatchFaceLog(captureTime, frameBase64, cctvId, suspectId, suspectName, distance);
+            DbHelper.InsertMatchFaceLog(captureTime, frameBase64, cctvId, suspectId, suspectName, distance, fileName, frameTimestamp);
             //string formattedCaptureTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             //string formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             //using (var connection = new SqliteConnection(connectionString))

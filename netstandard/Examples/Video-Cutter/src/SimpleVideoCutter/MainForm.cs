@@ -285,7 +285,7 @@ namespace SimpleVideoCutter
         {
             string fileInfo = fileBeingPlayed != null ?
                 string.Format("{0:yyyy/MM/dd HH:mm:ss}", new FileInfo(fileBeingPlayed).LastWriteTime)
-                : "N/A"; 
+                : "N/A";
             statusStrip.InvokeIfRequired(() =>
             {
                 toolStripStatusLabelFileDate.Text = fileInfo;
@@ -756,7 +756,7 @@ namespace SimpleVideoCutter
             {
                 toolStripStatusLabelVolume.Text = $"{GlobalStrings.MainForm_Volume}: {volume} %";
             });
-            
+
             vlcControl1.MediaPlayer!.Volume = volume;
         }
 
@@ -984,6 +984,62 @@ namespace SimpleVideoCutter
                 PrevFrame();
             }
         }
+        private void toolStripButtonInternetVersionCheck_Click(object sender, EventArgs e)
+        {
+            if (vlcControl1.MediaPlayer != null && fileBeingPlayed != null)
+            {
+                // Pause video if playing
+                if (vlcControl1.MediaPlayer.IsPlaying)
+                {
+                    vlcControl1.MediaPlayer.Pause();
+                }
+
+                // Ask user where to save JPEG
+                using (SaveFileDialog saveDialog = new SaveFileDialog())
+                {
+                    saveDialog.Title = "Save Current Frame As JPEG";
+                    saveDialog.Filter = "JPEG Image|*.jpg";
+                    saveDialog.FileName = Path.GetFileNameWithoutExtension(fileBeingPlayed) + "_frame.jpg";
+
+                    if (saveDialog.ShowDialog() == DialogResult.OK)
+                    {
+                        string tempPngPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString() + ".png");
+
+                        // Take snapshot at native resolution
+                        bool success = vlcControl1.MediaPlayer.TakeSnapshot(0, tempPngPath, 1920, 1080); // Optional: replace with actual resolution
+
+                        if (success && File.Exists(tempPngPath))
+                        {
+                            try
+                            {
+                                using (var image = System.Drawing.Image.FromFile(tempPngPath))
+                                {
+                                    image.Save(saveDialog.FileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                                }
+
+                                File.Delete(tempPngPath); // Clean up
+                                MessageBox.Show("Snapshot saved as JPEG successfully!", "Success", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                            }
+                            catch (Exception ex)
+                            {
+                                MessageBox.Show("Failed to save JPEG: " + ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                            }
+                        }
+                        else
+                        {
+                            MessageBox.Show("Failed to capture snapshot.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                MessageBox.Show("No video is currently loaded.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
+        }
+
+
+
 
         private void toolStripSelection_ItemClicked(object? sender, ToolStripItemClickedEventArgs e)
         {
@@ -1025,13 +1081,13 @@ namespace SimpleVideoCutter
 
         private void toolStripInternet_ItemClicked(object? sender, ToolStripItemClickedEventArgs e)
         {
-            if (e.ClickedItem == toolStripButtonInternetVersionCheck)
-            {
-                using (var about = new AboutBox())
-                {
-                    about.ShowDialog();
-                }
-            }
+            //if (e.ClickedItem == toolStripButtonInternetVersionCheck)
+            //{
+            //    using (var about = new AboutBox())
+            //    {
+            //        about.ShowDialog();
+            //    }
+            //}
         }
 
         private void OpenNextFileInDirectory()
@@ -1182,6 +1238,6 @@ namespace SimpleVideoCutter
                 MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
 
-
+ 
     }
 }

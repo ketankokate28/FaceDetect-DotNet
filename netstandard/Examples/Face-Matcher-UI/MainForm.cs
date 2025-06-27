@@ -12,6 +12,7 @@ using FaceONNX;
 using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Button = System.Windows.Forms.Button;
 using UMapx.Window;
+using System.Drawing.Imaging;
 
 namespace UI
 {
@@ -43,6 +44,7 @@ namespace UI
         private Button btnPrev;
         private Label lblImageCounter;
         string[] imageExtensions = new[] { ".jpg", ".jpeg", ".png", ".bmp" };
+        readonly string[] videoExtensions = new[] { ".mp4", ".avi", ".mov", ".mkv" };
         private Task _searchTask;
         private bool isProcessingRunning = false;
         public bool IsProcessingRunning => isProcessingRunning;
@@ -60,7 +62,8 @@ namespace UI
         private HashSet<string> knownMatchSet = new HashSet<string>();
         private List<MatchLog> matchedLogs;
         private HashSet<int> knownMatchIds; // Use IDs instead of comparing strings
-
+        private CancellationTokenSource _videoCaptureCts;
+        private Panel suspectDetailPanel; // field-level
         public SuspectListControl()
         {
             InitializeComponent();
@@ -175,8 +178,9 @@ namespace UI
                         isEditingSuspect = false;
                         if (result == DialogResult.OK)
                         {
-                            DbHelper.InsertOrUpdateSuspect(form.Suspect);
+                            int suspectId = DbHelper.InsertOrUpdateSuspect(form.Suspect);
                             LoadSuspectCards();
+                            ShowSuspectDetails(suspectId);
                         }
                     }
                 };
@@ -217,7 +221,7 @@ namespace UI
             panelDetails.Controls.Add(leftContent);
 
             // === RIGHT PANEL (DOB, FIR, etc) ===
-            AddSuspectDetailsPanel(suspect);
+            suspectDetailPanel = AddSuspectDetailsPanel(suspect);
             LoadMatchedFramesPanel(leftContent, _selectedSuspectId);
         }
         private void LoadMatchedFramesPanel(Control parent, int suspectId)
@@ -233,13 +237,53 @@ namespace UI
             {
                 leftPreviewPanel.Controls.Clear();
 
+                // === Image container panel (holds PictureBox + Download Button) ===
+                var imagePanel = new Panel
+                {
+                    Dock = DockStyle.Fill,
+                    BackColor = Color.Black
+                };
+
+                // === The PictureBox ===
                 matchImageViewer = new PictureBox
                 {
                     Dock = DockStyle.Fill,
                     SizeMode = PictureBoxSizeMode.Zoom,
                     BorderStyle = BorderStyle.FixedSingle
                 };
-                leftPreviewPanel.Controls.Add(matchImageViewer);
+                imagePanel.Controls.Add(matchImageViewer);
+
+                // === The Download Button (Unicode) ===
+                var btnDownload = new Button
+                {
+                    Text = "💾", // Clean and widely supported
+                    Font = new Font("Segoe UI", 12, FontStyle.Bold),
+                    Size = new Size(32, 32),
+                    BackColor = Color.White,
+                    FlatStyle = FlatStyle.Flat,
+                    Anchor = AnchorStyles.Top | AnchorStyles.Right,
+                    Location = new Point(imagePanel.Width - 40, 10),
+                    Cursor = Cursors.Hand
+                };
+                btnDownload.FlatAppearance.BorderSize = 0;
+                btnDownload.Cursor = Cursors.Hand;
+                btnDownload.Click += (s, e) =>
+                {
+                    if (matchImageViewer?.Image != null)
+                    {
+                        DownloadMatchImage(matchImageViewer.Image, $"matched_{DateTime.Now:yyyyMMdd_HHmmss}.jpg");
+                    }
+                };
+
+                // Ensure button stays in front
+                imagePanel.Controls.Add(btnDownload);
+                btnDownload.BringToFront();
+
+                // === Add image panel to the preview area ===
+                leftPreviewPanel.Controls.Clear();
+                leftPreviewPanel.Controls.Add(imagePanel);
+
+
 
                 ShowMatchImage(0); // Show the first match image
             }
@@ -370,6 +414,7 @@ namespace UI
             try
             {
                 var b64 = matchedLogs[currentMatchImageIndex].FrameBase64;
+                UpdateMatchedFrameDetails(matchedLogs[currentMatchImageIndex]);
                 byte[] imageBytes = Convert.FromBase64String(b64);
                 using var ms = new System.IO.MemoryStream(imageBytes);
 
@@ -584,6 +629,7 @@ namespace UI
 
             // Step 2: Start processing in background with cancellation support
             _cts = new CancellationTokenSource();
+            _videoCaptureCts = new CancellationTokenSource();
             var token = _cts.Token;
 
             Task.Run(() => Process(token), token);
@@ -601,10 +647,18 @@ namespace UI
             {
                 Array.ForEach(Directory.GetFiles(TempResultDir), File.Delete);
             }
+            if (!Directory.Exists(ResultDir))
+            {
+                Directory.CreateDirectory(ResultDir);
+            }
+            else
+            {
+                Array.ForEach(Directory.GetFiles(ResultDir), File.Delete);
+            }
 
-            var allImageFiles = Directory.GetFiles(selectedFolderPath)
-                .Where(f => IsImage(f))
-                .ToArray();
+            //var allImageFiles = Directory.GetFiles(selectedFolderPath)
+            //    .Where(f => IsImage(f))
+            //    .ToArray();
 
             var sharedDetector = new FaceDetector();
             var sharedEmbedder = new FaceEmbedder();
@@ -630,6 +684,7 @@ namespace UI
          sharedEmbedder))
      .ToArray();
             CopyAllImagesToFolder(selectedFolderPath, FramesDir);
+            CopyAndProcessAllVideosAsync(selectedFolderPath);
             _ = MonitorWorkerIdleLoopAsync(stoppingToken);
             //foreach (var img in allImageFiles)
             //{
@@ -680,6 +735,17 @@ namespace UI
                 }
             }
         }
+        private async Task CopyAndProcessAllVideosAsync(string parentFolder)
+        {
+            var allVideoFiles = Directory.GetFiles(parentFolder, "*.*", SearchOption.AllDirectories)
+                .Where(IsVideo)
+                .ToArray();
+
+            if (allVideoFiles.Length == 0)
+                return;
+
+            await StartMultipleVideoFeedsAsync(allVideoFiles);
+        }
         private void EnqueueImage(string imagePath)
         {
             if (workers == null || workers.Length == 0)
@@ -695,6 +761,11 @@ namespace UI
         {
             string ext = Path.GetExtension(path).ToLower();
             return imageExtensions.Contains(ext);
+        }
+        bool IsVideo(string path)
+        {
+            string ext = Path.GetExtension(path).ToLower();
+            return videoExtensions.Contains(ext);
         }
         private async void HandleStopSearch(Button btnStart, Button btnStop, LinkLabel btnExport)
         {
@@ -719,7 +790,7 @@ namespace UI
 
 
             _cts?.Cancel();
-
+            _videoCaptureCts?.Cancel();
             // Show popup while waiting
             using (var stopForm = new StopProgressForm())
             {
@@ -911,7 +982,7 @@ namespace UI
             panelImagePreview.Tag = leftPanel;
         }
 
-        private void AddSuspectDetailsPanel(dynamic suspect)
+        private Panel AddSuspectDetailsPanel(dynamic suspect)
         {
             int padding = 20;
             var detailsPanel = new Panel
@@ -926,26 +997,51 @@ namespace UI
             };
 
             int y = 10;
-            void AddDetail(string label)
+            int labelWidth = detailsPanel.Width - 30; // Leave margin for padding
+
+            void AddDetail(string title, string value)
             {
-                var lbl = new Label
+                var lblTitle = new Label
                 {
-                    Text = label,
+                    Text = $"{title}:",
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                    ForeColor = Color.FromArgb(30, 30, 60),
                     AutoSize = true,
                     Location = new Point(10, y),
-                    Font = new Font("Segoe UI", 9)
+                    MaximumSize = new Size(labelWidth, 0)
                 };
-                detailsPanel.Controls.Add(lbl);
-                y += lbl.Height + 8;
+                detailsPanel.Controls.Add(lblTitle);
+                y += lblTitle.Height + 2;
+
+                var txtValue = new System.Windows.Forms.TextBox
+                {
+                    Text = value ?? "",
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                    ForeColor = Color.Black,
+                    BackColor = detailsPanel.BackColor,
+                    BorderStyle = BorderStyle.None,
+                    ReadOnly = true,
+                    Location = new Point(10, y),
+                    Width = labelWidth,
+                    Multiline = true,
+                    ScrollBars = ScrollBars.None,
+                };
+                txtValue.Height = TextRenderer.MeasureText(txtValue.Text, txtValue.Font, new Size(txtValue.Width, int.MaxValue), TextFormatFlags.WordBreak).Height;
+
+                detailsPanel.Controls.Add(txtValue);
+                y += txtValue.Height + 10;
             }
 
-            AddDetail($"DOB: {suspect.Dob}");
-            AddDetail($"FIR No: {suspect.FirNo}");
-            AddDetail($"Created At: {suspect.CreatedAt}");
-            AddDetail($"Updated At: {suspect.UpdatedAt}");
+            // Add all suspect details
+            AddDetail("DOB", suspect.Dob);
+            AddDetail("FIR No", suspect.FirNo);
+            AddDetail("Created At", suspect.CreatedAt);
+            AddDetail("Updated At", suspect.UpdatedAt);
 
             panelDetails.Controls.Add(detailsPanel);
+            return detailsPanel;
         }
+
 
         protected override void OnPaint(PaintEventArgs e)
         {
@@ -1063,6 +1159,183 @@ namespace UI
 
             HandleStopSearch(btnStart, btnStop, btnExport);
         }
+        private async Task StartVideoFeedAsync(string videoPath, CancellationToken token)
+        {
+            if (workers == null || workers.Length == 0)
+                return;
+
+            await Task.Run(async () =>
+            {
+                var capture = new OpenCvSharp.VideoCapture(videoPath);
+                string videoFileName = Path.GetFileNameWithoutExtension(videoPath);
+                if (!capture.IsOpened())
+                {
+                   // Invoke(() => txtLog.AppendText($"\nFailed to open video: {videoPath}"));
+                    return;
+                }
+
+                var frame = new OpenCvSharp.Mat();
+                int frameCount = 0;
+
+                double fps = capture.Fps > 0 ? capture.Fps : 30;
+                double durationSec = capture.FrameCount / fps;
+                int frameInterval = (int)(fps);  // Read 1 frame per second
+
+                for (int currentFrame = 0; currentFrame < capture.FrameCount; currentFrame += frameInterval)
+                {
+                    if (token.IsCancellationRequested)
+                        break;
+                    capture.Set(OpenCvSharp.VideoCaptureProperties.PosFrames, currentFrame);
+
+                    if (!capture.Read(frame) || frame.Empty())
+                        break;
+
+                    using var bitmap = OpenCvSharp.Extensions.BitmapConverter.ToBitmap(frame);
+                    using var originalBitmap = (Bitmap)bitmap.Clone();
+
+                    var jpegStream = new MemoryStream();
+                    var encoder = GetEncoder(ImageFormat.Jpeg);
+                    var encoderParams = new EncoderParameters(1);
+                    encoderParams.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 50L);
+                    originalBitmap.Save(jpegStream, encoder, encoderParams);
+
+                    //Guid g = Guid.NewGuid();
+
+                    
+                    string frameTimestamp = TimeSpan.FromSeconds(currentFrame / fps).ToString(@"hh\-mm\-ss");
+                    string now = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+                    string frameName = $"VIDXYZ_{videoFileName}_{frameTimestamp}_{now}.jpg";
+                    var filePath = Path.Combine(FramesDir, frameName);
+                    File.WriteAllBytes(filePath, jpegStream.ToArray());
+
+                    jpegStream.Position = 0;
+
+                    lock (workerLock)
+                    {
+                        if (!processedImages.ContainsKey(filePath))
+                        {
+                            EnqueueImage(filePath);
+                        }
+                        frameCount++;
+                    }
+                    await Task.Delay(1000); // wait for 1 second
+                }
+
+                capture.Release();
+              //  Invoke(() => txtLog.AppendText($"\nTotal frames pushed to queue for video {videoPath}: {frameCount}"));
+            });
+        }
+        private ImageCodecInfo GetEncoder(ImageFormat format)
+        {
+            return ImageCodecInfo.GetImageDecoders()
+                                 .FirstOrDefault(codec => codec.FormatID == format.Guid);
+        }
+
+        private async Task StartMultipleVideoFeedsAsync(string[] videoPaths)
+        {
+            if (videoPaths == null || videoPaths.Length == 0)
+                return;
+
+            var tasks = new List<Task>();
+
+            for (int i = 0; i < videoPaths.Length; i++)
+            {
+              //  int workerIndex = i % workers.Length; // Distribute videos across workers
+                string videoPath = videoPaths[i];
+
+                tasks.Add(StartVideoFeedAsync(videoPath, _videoCaptureCts.Token));
+            }
+
+            await Task.WhenAll(tasks);
+        }
+        private void UpdateMatchedFrameDetails(MatchLog log)
+        {
+            if (suspectDetailPanel == null || log == null) return;
+
+            // Remove previous match-related dynamic controls
+            var toRemove = suspectDetailPanel.Controls
+                .Cast<Control>()
+                .Where(c => c.Tag?.ToString() == "MatchDetail")
+                .ToList();
+
+            foreach (var ctrl in toRemove)
+                suspectDetailPanel.Controls.Remove(ctrl);
+
+            // Start Y just after last control
+            int y = suspectDetailPanel.Controls.Cast<Control>().Any()
+                ? suspectDetailPanel.Controls.Cast<Control>().Max(c => c.Bottom) + 20
+                : 10;
+
+            void AddDetail(string label, string value, Color? valueColor = null)
+            {
+                int labelWidth = suspectDetailPanel.Width - 30;
+
+                var lbl = new Label
+                {
+                    AutoSize = false,
+                    Location = new Point(10, y),
+                    Size = new Size(labelWidth, 18),
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Bold),
+                    ForeColor = Color.Black,
+                    Tag = "MatchDetail",
+                    Text = $"{label}:"
+                };
+                suspectDetailPanel.Controls.Add(lbl);
+                y += lbl.Height + 2;
+
+                var txtValue = new System.Windows.Forms.TextBox
+                {
+                    Text = value ?? "",
+                    Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                    ForeColor = valueColor ?? Color.FromArgb(30, 60, 130),
+                    BackColor = suspectDetailPanel.BackColor,
+                    BorderStyle = BorderStyle.None,
+                    ReadOnly = true,
+                    Location = new Point(10, y),
+                    Width = labelWidth,
+                    Multiline = true,
+                    ScrollBars = ScrollBars.None,
+                    Tag = "MatchDetail"
+                };
+
+                txtValue.Height = TextRenderer.MeasureText(
+                    txtValue.Text,
+                    txtValue.Font,
+                    new Size(txtValue.Width, int.MaxValue),
+                    TextFormatFlags.WordBreak
+                ).Height;
+
+                suspectDetailPanel.Controls.Add(txtValue);
+                y += txtValue.Height + 10;
+            }
+
+            float confidence = (1 - log.Distance) * 100;
+            Color confidenceColor = confidence >= 85 ? Color.ForestGreen :
+                                    confidence >= 60 ? Color.DarkOrange :
+                                    Color.DarkRed;
+
+            AddDetail("📅 Match Time", log.CaptureTime.ToString("yyyy-MM-dd HH:mm:ss"));
+            AddDetail("🎯 Confidence", $"{Math.Round(confidence)}%", confidenceColor);
+            AddDetail("📁 Filename", log.Filename);
+            AddDetail("⏱️ Frame Time", log.Frametime);
+        }
+        private void DownloadMatchImage(Image image, string defaultFileName)
+        {
+            if (image == null) return;
+
+            using SaveFileDialog dialog = new SaveFileDialog
+            {
+                Filter = "JPEG Image|*.jpg",
+                FileName = defaultFileName
+            };
+
+            if (dialog.ShowDialog() == DialogResult.OK)
+            {
+                image.Save(dialog.FileName, System.Drawing.Imaging.ImageFormat.Jpeg);
+                MessageBox.Show("Image saved successfully!", "Download", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+        }
+
         public void PrintLog()
         {
 

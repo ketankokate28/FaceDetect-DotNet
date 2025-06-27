@@ -23,9 +23,9 @@ namespace Face_Matcher_UI
         string suspectDir = "";
         string imageDir = "";
         string basePath = AppDomain.CurrentDomain.BaseDirectory;
-        string resultDir = Path.Combine(AppContext.BaseDirectory, "Results");
+        string resultDir = Path.Combine(AppContext.BaseDirectory, "Results_Quick");
         string framesDir = Path.Combine(AppContext.BaseDirectory, "frames");
-        string tempResultDir = Path.Combine(AppContext.BaseDirectory, "Results_Temp");
+        string tempResultDir = Path.Combine(AppContext.BaseDirectory, "Results_QuickTemp");
         private string[] imageFiles;
         private int currentIndex = 0;
         string fullPath = "";
@@ -67,9 +67,9 @@ namespace Face_Matcher_UI
             {
                 Directory.CreateDirectory(fullPath);
             }
-            else
+            if (!Directory.Exists(resultDir))
             {
-                //Array.ForEach(Directory.GetFiles(resultDir), File.Delete); 
+                Directory.CreateDirectory(resultDir);
             }
             watcher = new FileSystemWatcher(fullPath);
             watcher.Filter = "*.*";
@@ -91,7 +91,7 @@ namespace Face_Matcher_UI
                                   .Where(f => IsImageFile(f))
                                   .OrderBy(f => f) // sort by filename ascending
                                   .ToArray();
-            PrecomputeSuspectEmbeddingsAsync(Path.Combine(AppContext.BaseDirectory, "suspects"));
+           // PrecomputeSuspectEmbeddingsAsync(Path.Combine(AppContext.BaseDirectory, "suspects"));
 
         }
         private Dictionary<int, string> LoadSuspectList_backup()
@@ -307,8 +307,6 @@ namespace Face_Matcher_UI
             }
         }
 
-
-
         private void btnNext_Click(object sender, EventArgs e)
         {
             if (imageFiles != null && imageFiles.Length > 0)
@@ -359,7 +357,7 @@ namespace Face_Matcher_UI
 
         private void button1_Click(object sender, EventArgs e)
         {
-            if (cachedSuspectEmbeddings.Count < 1 || !Directory.Exists(imageDir))
+            if (cachedSuspectEmbeddings ==null || cachedSuspectEmbeddings.Count < 1 || !Directory.Exists(imageDir))
             {
                 MessageBox.Show("Please select valid directories for suspect or images.");
                 return;
@@ -748,12 +746,15 @@ namespace Face_Matcher_UI
 
                 // Filter only folders matching suspect IDs
 
+                //var validSuspectFolders = Directory.GetDirectories(suspectDir)
+                //    .Where(folderPath =>
+                //    {
+                //        var folderName = Path.GetFileName(folderPath);
+                //        return int.TryParse(folderName, out int id) && suspectList.ContainsKey(id);
+                //    })
+                //    .ToList();
+
                 var validSuspectFolders = Directory.GetDirectories(suspectDir)
-                    .Where(folderPath =>
-                    {
-                        var folderName = Path.GetFileName(folderPath);
-                        return int.TryParse(folderName, out int id) && suspectList.ContainsKey(id);
-                    })
                     .ToList();
 
                 // Call matcher logic only with valid folders
