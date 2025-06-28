@@ -599,6 +599,16 @@ namespace UI
             {
                 MessageBox.Show("Please select suspect.");
             }
+
+            check obj = new check();
+            bool result = obj.checklisence();
+
+            if (!result)
+            {
+                MessageBox.Show("License validation failed or expired.", "License Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                Environment.Exit(0);
+                return;
+            }
             isProcessingRunning = true;
             btnStart.Enabled = false;
             btnStop.Enabled = true;
