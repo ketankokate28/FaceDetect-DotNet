@@ -38,7 +38,9 @@ namespace FaceONNX
             options.IntraOpNumThreads = Environment.ProcessorCount;
 
             TrySetExecutionProvider(options);
-            _session = new InferenceSession(Resources.yolov5s_face, options);
+            var modelPath = Path.Combine(AppContext.BaseDirectory, "yolov5s-face.onnx");
+            _session = new InferenceSession(modelPath, options);
+            //_session = new InferenceSession(Resources.yolov5s_face, options);
 
             DetectionThreshold = detectionThreshold;
             ConfidenceThreshold = confidenceThreshold;

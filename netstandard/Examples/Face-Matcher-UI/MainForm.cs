@@ -1140,8 +1140,8 @@ namespace UI
                 {
                     await Task.Delay(TimeSpan.FromSeconds(10), token); // Check every 10s
 
-                    if (workers != null && workers.All(w =>
-                        (DateTime.Now - w.LastActiveTime).TotalSeconds > 10))
+                    if (workers != null && workers.All(w => !w.IsBusy &&
+                     (DateTime.Now - w.LastActiveTime).TotalSeconds > 10))
                     {
                         _logCallback?.Invoke("Idle timeout: All workers inactive for 1 minute");
                         _ = InvokeStopSearch();

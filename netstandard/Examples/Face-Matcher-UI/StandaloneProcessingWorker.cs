@@ -24,9 +24,8 @@ namespace Face_Matcher_UI
         private readonly string _resultDir;
         private readonly string _tempResultDir;
         private readonly Action<string> _logCallback;
-        private volatile bool _isRunning = false;
         public DateTime LastActiveTime { get; private set; } = DateTime.Now;
-        public bool IsRunning => _isRunning;
+        public bool IsBusy { get; private set; }
 
         public StandaloneProcessingWorker(
             Dictionary<string, float[]> suspectEmbeddings,
@@ -76,7 +75,8 @@ namespace Face_Matcher_UI
         {
             const int MaxBatchSize = 16;
             const int DelayInterval = 10; // ms
-
+            const int IdleDelay = 50;
+            const int ActiveDelay = 5;
             var batch = new List<string>(MaxBatchSize);
 
             while (!_token.IsCancellationRequested)
@@ -91,15 +91,16 @@ namespace Face_Matcher_UI
 
                     if (batch.Count > 0)
                     {
-
-
-                            _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
+                        IsBusy = true;
+                        _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
                             _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
                         LastActiveTime = DateTime.Now; // Update last active time
                         batch.Clear();
-                    
+                        IsBusy = false;
+
+
                     }
-                    await Task.Delay(5, _token);
+                    await Task.Delay(batch.Count > 0 ? ActiveDelay : IdleDelay, _token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -137,10 +138,12 @@ namespace Face_Matcher_UI
 
                     if (batch.Count > 0)
                     {
+                        IsBusy = true;
                         _faceMatcher.RunBatch_CUDA(_suspectEmbeddings, batch.ToArray(),
                             _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
                         LastActiveTime = DateTime.Now; // Update last active time
                         batch.Clear();
+                        IsBusy = false;
                     }
                     await Task.Delay(5, _token);
                 }

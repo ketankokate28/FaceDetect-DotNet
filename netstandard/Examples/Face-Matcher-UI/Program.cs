@@ -13,6 +13,27 @@ namespace Face_Matcher_UI
             DbHelper.Initialize(); // <- Ensure DB and table are ready
                                    // To customize application configuration such as set high DPI settings or default font,
                                    // see https://aka.ms/applicationconfiguration.
+
+
+            if (!File.Exists("mylicense.lic"))
+            {
+                OpenFileDialog ofd = new OpenFileDialog
+                {
+                    Title = "Select Your License File",
+                    Filter = "License Files (*.lic)|*.lic|All Files (*.*)|*.*"
+                };
+
+                if (ofd.ShowDialog() == DialogResult.OK)
+                {
+                    File.Copy(ofd.FileName, "mylicense.lic");
+                }
+                else
+                {
+                    MessageBox.Show("License file is required to run the app.");
+                    return;
+                }
+            }
+
             check obj = new check();
           bool result =  obj.checklisence();
             if (!result)
