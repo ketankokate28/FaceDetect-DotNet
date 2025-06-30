@@ -43,6 +43,18 @@ namespace Face_Matcher_UI
                 return;
             }
             ApplicationConfiguration.Initialize();
+
+            // Show login screen
+            var loginForm = new LoginForm();
+            loginForm.ShowDialog();
+
+            if (!loginForm.IsAuthenticated)
+            {
+                MessageBox.Show("Login required to proceed.", "Access Denied", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                Environment.Exit(0);
+                return;
+            }
+
             Application.Run(new Form1());
         }
     }

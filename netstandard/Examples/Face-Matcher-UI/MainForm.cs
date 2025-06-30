@@ -13,6 +13,7 @@ using static System.Windows.Forms.VisualStyles.VisualStyleElement;
 using Button = System.Windows.Forms.Button;
 using UMapx.Window;
 using System.Drawing.Imaging;
+using System.Xml.Linq;
 
 namespace UI
 {
@@ -64,10 +65,13 @@ namespace UI
         private HashSet<int> knownMatchIds; // Use IDs instead of comparing strings
         private CancellationTokenSource _videoCaptureCts;
         private Panel suspectDetailPanel; // field-level
+        private string selectedStrictness = "Medium"; // Default value
+        XDocument doc = new XDocument();
         public SuspectListControl()
         {
             InitializeComponent();
-
+            doc = XDocument.Load("appsettings.xml");
+           
             panelDetails.Controls.Clear();
             LoadSuspectCards();
             splitContainer.SplitterDistance = splitContainer.SplitterDistance + 1;
@@ -555,8 +559,41 @@ namespace UI
                 }
             };
 
+            var lblStrictness = new Label
+            {
+                Text = "Strictness:",
+                Font = new Font("Segoe UI", 9, FontStyle.Bold),
+                AutoSize = true,
+                Margin = new Padding(10, 7, 0, 0)
+            };
+
+            var comboStrictness = new System.Windows.Forms.ComboBox
+            {
+                Name = "comboStrictness",
+                DropDownStyle = ComboBoxStyle.DropDownList,
+                Width = 130,
+                Font = new Font("Segoe UI", 9.5f, FontStyle.Regular),
+                Height = 30,
+                Margin = new Padding(5, 5, 0, 0),
+                BackColor = Color.White,
+                ForeColor = Color.Black,
+                FlatStyle = FlatStyle.Standard // You can also try FlatStyle.Popup for sleeker style
+            };
+
+            comboStrictness.Items.AddRange(new[] { "High", "Medium", "Low" });
+            comboStrictness.SelectedIndex = 1; // Default to Medium
+            flow.Controls.Add(lblStrictness);
+            flow.Controls.Add(comboStrictness);
+
             btnStart.Click += (s, e) =>
             {
+                var found = topHeaderPanel.Controls.OfType<FlowLayoutPanel>()
+      .SelectMany(fp => fp.Controls.OfType<System.Windows.Forms.ComboBox>())
+      .FirstOrDefault(cb => cb.Name == "comboStrictness");
+
+                if (found != null)
+                    selectedStrictness = found.SelectedItem?.ToString() ?? "Medium";
+
                 HandleStartSearch(btnStart, btnStop, btnExport);
             };
 
@@ -569,6 +606,7 @@ namespace UI
             {
                 HandleExportReport();
             };
+
 
             // Add buttons to flow
             StyleActionButton(btnSelectFolder, Color.WhiteSmoke, Color.Black, Color.Gainsboro, Color.LightGray);
@@ -665,10 +703,22 @@ namespace UI
             {
                 Array.ForEach(Directory.GetFiles(ResultDir), File.Delete);
             }
+            double threshold = 0.70; // default fallback
 
-            //var allImageFiles = Directory.GetFiles(selectedFolderPath)
-            //    .Where(f => IsImage(f))
-            //    .ToArray();
+            switch (selectedStrictness)
+            {
+                case "High":
+                    threshold = double.Parse(doc.Root.Element("StrictHigh")?.Value ?? "0.70");
+                    break;
+
+                case "Medium":
+                    threshold = double.Parse(doc.Root.Element("StrictMedium")?.Value ?? "0.70");
+                    break;
+
+                case "Low":
+                    threshold = double.Parse(doc.Root.Element("StrictLow")?.Value ?? "0.70");
+                    break;
+            }
 
             var sharedDetector = new FaceDetector();
             var sharedEmbedder = new FaceEmbedder();
@@ -691,7 +741,7 @@ namespace UI
         LogHandler,  // <== Pass from outer scope
          stoppingToken,
          sharedDetector,
-         sharedEmbedder))
+         sharedEmbedder,threshold))
      .ToArray();
             CopyAllImagesToFolder(selectedFolderPath, FramesDir);
             CopyAndProcessAllVideosAsync(selectedFolderPath);
@@ -973,17 +1023,17 @@ namespace UI
                 ColumnCount = 3,
                 RowCount = 1
             };
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F)); // Left image
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37F)); // Left image
             layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 8F));  // Nav buttons
-            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 37)); // Right image
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 55F)); // Right image
 
             // === LEFT: Match Image Panel ===
             var leftPanel = new Panel { Dock = DockStyle.Fill, BackColor = Color.White };
-            layout.Controls.Add(leftPanel, 0, 0);
+            layout.Controls.Add(leftPanel, 2, 0);
             // === RIGHT: Reference Image Preview ===
             picMainImage.Dock = DockStyle.Fill;
             picMainImage.SizeMode = PictureBoxSizeMode.Zoom;
-            layout.Controls.Add(picMainImage, 2, 0);
+            layout.Controls.Add(picMainImage, 0, 0);
 
             panelImagePreview.Controls.Add(layout);
             parent.Controls.Add(panelImagePreview);

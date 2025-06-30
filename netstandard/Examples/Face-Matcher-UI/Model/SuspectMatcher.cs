@@ -284,7 +284,7 @@ namespace Model
   string tempResultDir,
   Action<string> logCallback,
   FaceDetector faceDetector,
-  FaceEmbedder faceEmbedder)
+  FaceEmbedder faceEmbedder, double _threshold)
         {
             if (faceDetector == null || faceEmbedder == null || faceEmbedder.IsDisposed || faceDetector.IsDisposed)
             {
@@ -349,7 +349,7 @@ namespace Model
                             .OrderBy(kvp => kvp.Distance)
                             .First();
 
-                        if (bestMatch.Distance < MatchThreshold)
+                        if (bestMatch.Distance < _threshold)
                         {
                             double calculatedScore = bestMatch.Distance - 0.20;
                             double similarityPercent = (1.0 - calculatedScore) * 100.0;
@@ -400,7 +400,7 @@ namespace Model
                  string[] imageFiles,
                  string resultDir,
                  string tempResultDir,
-                 Action<string> logCallback, FaceDetector faceDetector, FaceEmbedder faceEmbedder)
+                 Action<string> logCallback, FaceDetector faceDetector, FaceEmbedder faceEmbedder, double _threshold)
             {
             if (faceDetector == null || faceEmbedder == null || faceEmbedder.IsDisposed || faceDetector.IsDisposed)
             {
@@ -481,7 +481,7 @@ namespace Model
         .First();
 
 
-                            if (bestMatch.Distance < MatchThreshold)
+                            if (bestMatch.Distance < _threshold)
                             {
                             double calculatedScore = bestMatch.Distance - 0.20;
                             double similarityPercent = (1.0 - calculatedScore) * 100.0;

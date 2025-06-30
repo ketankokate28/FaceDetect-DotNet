@@ -1,3 +1,6 @@
 <Settings>
   <VideoToolPath>C:\Users\ketan_kokate\Downloads\VIdeo cutter\SimpleVideoCutter.exe</VideoToolPath>
+	<StrictHigh>0.65</StrictHigh>
+	<StrictMedium>0.70</StrictMedium>
+	<StrictLow>0.75</StrictLow>
 </Settings>

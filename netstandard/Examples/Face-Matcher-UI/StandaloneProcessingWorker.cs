@@ -25,6 +25,7 @@ namespace Face_Matcher_UI
         private readonly string _tempResultDir;
         private readonly Action<string> _logCallback;
         public DateTime LastActiveTime { get; private set; } = DateTime.Now;
+        double _threshold = 0;
         public bool IsBusy { get; private set; }
 
         public StandaloneProcessingWorker(
@@ -32,7 +33,7 @@ namespace Face_Matcher_UI
             string resultDir,
             string tempResultDir,
             Action<string> logCallback,
-            CancellationToken token, FaceDetector sharedFaceDetector, FaceEmbedder sharedFaceEmbedder)
+            CancellationToken token, FaceDetector sharedFaceDetector, FaceEmbedder sharedFaceEmbedder, double threshold)
         {
             _faceDetector = sharedFaceDetector;
            _faceEmbedder = sharedFaceEmbedder;
@@ -54,6 +55,7 @@ namespace Face_Matcher_UI
             _resultDir = resultDir;
             _tempResultDir = tempResultDir;
             _logCallback = logCallback;
+            _threshold = threshold;
             _token = token;
             if(ExecutionProviderManager.CurrentExecutionProvider == ExecutionProviderManager.CUDA)
             {
@@ -93,7 +95,7 @@ namespace Face_Matcher_UI
                     {
                         IsBusy = true;
                         _faceMatcher.RunBatch(_suspectEmbeddings, batch.ToArray(),
-                            _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                            _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder, _threshold);
                         LastActiveTime = DateTime.Now; // Update last active time
                         batch.Clear();
                         IsBusy = false;
@@ -140,7 +142,7 @@ namespace Face_Matcher_UI
                     {
                         IsBusy = true;
                         _faceMatcher.RunBatch_CUDA(_suspectEmbeddings, batch.ToArray(),
-                            _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder);
+                            _resultDir, _tempResultDir, _logCallback, _faceDetector, _faceEmbedder,_threshold);
                         LastActiveTime = DateTime.Now; // Update last active time
                         batch.Clear();
                         IsBusy = false;
