@@ -21,7 +21,19 @@ namespace Face_Matcher_UI
                 var pass = txtPassword.Text.Trim();
 
                 // 🔐 Hardcoded credentials (you can externalize if needed)
-                if (user == "admin" && pass == "pass123")
+                if (user == "user1" && pass == "Palghar@123")
+                {
+                    IsAuthenticated = true;
+                    this.Close();
+                }
+                else
+                    if (user == "ketan" && pass == "ketan!@#")
+                    {
+                        IsAuthenticated = true;
+                        this.Close();
+                    }
+                else
+                    if (user == "prakash" && pass == "prakash!@#")
                 {
                     IsAuthenticated = true;
                     this.Close();
