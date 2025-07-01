@@ -166,6 +166,7 @@
             fileToolStripMenuItem.Name = "fileToolStripMenuItem";
             fileToolStripMenuItem.Size = new Size(46, 24);
             fileToolStripMenuItem.Text = "File";
+            fileToolStripMenuItem.Visible = false;
             // 
             // enrollSuspectToolStripMenuItem
             // 
@@ -194,6 +195,7 @@
             videoMatcherToolStripMenuItem.Size = new Size(120, 24);
             videoMatcherToolStripMenuItem.Text = "Quick Match";
             videoMatcherToolStripMenuItem.Click += videoMatcherToolStripMenuItem_Click;
+            videoMatcherToolStripMenuItem.Visible = false;
             // 
             // exitToolStripMenuItem
             // 
