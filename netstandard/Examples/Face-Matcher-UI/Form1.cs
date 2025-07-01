@@ -47,8 +47,10 @@ namespace Face_Matcher_UI
             this.WindowState = FormWindowState.Maximized;
             InitializeComponent();
             var doc = XDocument.Load("appsettings.xml");
-            VideoToolPath = doc.Root.Element("VideoToolPath").Value;
-
+            var relativeToolPath = doc.Root.Element("VideoToolPath")?.Value;
+            //VideoToolPath = doc.Root.Element("VideoToolPath").Value;
+            string baseDirectory = AppDomain.CurrentDomain.BaseDirectory;
+            VideoToolPath = Path.Combine(baseDirectory, relativeToolPath);
             comboBox1.SelectedItem = "Directory";
             comboBox2.SelectedItem = "Directory";
             pictureBox1.SizeMode = PictureBoxSizeMode.Zoom;
