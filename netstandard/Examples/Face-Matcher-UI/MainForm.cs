@@ -67,6 +67,7 @@ namespace UI
         private Panel suspectDetailPanel; // field-level
         private string selectedStrictness = "Medium"; // Default value
         XDocument doc = new XDocument();
+        public event EventHandler DeleteClicked;
         public SuspectListControl()
         {
             InitializeComponent();
@@ -132,6 +133,7 @@ namespace UI
             {
                 var card = new SuspectCard();
                 card.ClearEditClickHandlers();
+                card.ClearDeleteClickHandlers();
                 card.SuspectId = s.Id;
                 card.SetData(s.Name, s.Img);
 
@@ -188,6 +190,22 @@ namespace UI
                         }
                     }
                 };
+                card.DeleteClicked += (sender, e) =>
+                {
+                    if (isProcessingRunning)
+                    {
+                        MessageBox.Show("Please stop the current search before deleting a suspect.", "Search Running", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+
+                    var confirm = MessageBox.Show("Are you sure you want to delete this suspect and all their matched data?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
+                    if (confirm == DialogResult.Yes)
+                    {
+                        DbHelper.DeleteSuspect(capturedId);
+                        LoadSuspectCards(); // Refresh UI
+                    }
+                };
+
 
                 flowLayoutPanelSuspects.Controls.Add(card);
             }
@@ -893,7 +911,10 @@ namespace UI
         private void HandleExportReport()
         {
             // TODO: Replace with real export logic
-            MessageBox.Show("Exporting Search Report...");
+            if (_selectedSuspectId > 0)
+                ReportGenerator.ExportSuspectReport(_selectedSuspectId);
+            else
+                MessageBox.Show("Please select a suspect first.");
         }
 
         private void AddImageThumbnailScroller(Control parent, dynamic suspect, int padding)

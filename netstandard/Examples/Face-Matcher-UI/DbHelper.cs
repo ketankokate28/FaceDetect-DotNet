@@ -1,6 +1,7 @@
 ﻿using Model;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Data.SQLite;
 using System.Text;
 
@@ -216,25 +217,27 @@ namespace Face_Matcher_UI
         public static List<MatchLog> GetMatchedLogsForSuspect(int suspectId)
         {
             var results = new List<MatchLog>();
+
             using var conn = new SQLiteConnection(connectionString);
             conn.Open();
 
-            string sql = @"SELECT id, capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date, filename, frametime 
-                   FROM Matchfacelogs
-                   WHERE suspect_id = @SuspectId
-                   ORDER BY capture_time DESC";
+            using var cmd = new SQLiteCommand(@"
+        SELECT id, capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date, filename, frametime 
+        FROM Matchfacelogs
+        WHERE suspect_id = @SuspectId
+        ORDER BY capture_time DESC", conn);
 
-            using var cmd = new SQLiteCommand(sql, conn);
             cmd.Parameters.AddWithValue("@SuspectId", suspectId);
 
-            using var reader = cmd.ExecuteReader();
+            using var reader = cmd.ExecuteReader(CommandBehavior.SequentialAccess);
+
             while (reader.Read())
             {
                 results.Add(new MatchLog
                 {
                     Id = reader.GetInt32(0),
                     CaptureTime = DateTime.Parse(reader.GetString(1)),
-                    FrameBase64 = reader.GetString(2),
+                    FrameBase64 = reader.IsDBNull(2) ? "" : reader.GetString(2), // ✅ Correct for TEXT
                     CctvId = reader.GetInt32(3),
                     SuspectId = reader.IsDBNull(4) ? 0 : reader.GetInt32(4),
                     Suspect = reader.IsDBNull(5) ? null : reader.GetString(5),
@@ -244,9 +247,41 @@ namespace Face_Matcher_UI
                     Frametime = reader.IsDBNull(9) ? null : reader.GetString(9)
                 });
             }
-
             return results;
         }
+        public static void DeleteSuspect(int suspectId)
+        {
+            using var conn = new SQLiteConnection(connectionString);
+            conn.Open();
+
+            using var transaction = conn.BeginTransaction();
+
+            try
+            {
+                // 1. Delete from Matchfacelogs
+                using (var cmd1 = new SQLiteCommand("DELETE FROM Matchfacelogs WHERE suspect_id = @id", conn, transaction))
+                {
+                    cmd1.Parameters.AddWithValue("@id", suspectId);
+                    cmd1.ExecuteNonQuery();
+                }
+
+                // 2. Delete from Suspect
+                using (var cmd2 = new SQLiteCommand("DELETE FROM Suspect WHERE suspect_id = @id", conn, transaction))
+                {
+                    cmd2.Parameters.AddWithValue("@id", suspectId);
+                    cmd2.ExecuteNonQuery();
+                }
+
+                transaction.Commit();
+            }
+            catch (Exception ex)
+            {
+                transaction.Rollback();
+                MessageBox.Show($"Error deleting suspect: {ex.Message}");
+            }
+        }
+
+
 
 
     }

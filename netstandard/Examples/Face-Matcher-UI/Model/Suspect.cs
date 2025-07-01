@@ -16,7 +16,30 @@ namespace Model
         public string[] Images { get; set; } = new string[10];
         public string CreatedAt { get; set; } = DateTime.Now.ToString("s");
         public string UpdatedAt { get; set; } = DateTime.Now.ToString("s");
+        public List<Image> GetImageList()
+        {
+            var result = new List<Image>();
 
+            foreach (var base64 in Images)
+            {
+                if (string.IsNullOrWhiteSpace(base64))
+                    continue;
+
+                try
+                {
+                    byte[] bytes = Convert.FromBase64String(base64);
+                    using var ms = new MemoryStream(bytes);
+                    var img = Image.FromStream(ms);  // Note: Image.FromStream makes a lazy-loading image
+                    result.Add(new Bitmap(img));     // We clone to ensure it's usable after stream closes
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Image conversion error: {ex.Message}");
+                }
+            }
+
+            return result;
+        }
         public static Suspect FromReader(SQLiteDataReader reader)
         {
             var s = new Suspect

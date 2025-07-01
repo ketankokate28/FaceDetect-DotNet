@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Windows.Forms;
 using Timer = System.Windows.Forms.Timer;
@@ -11,6 +11,9 @@ namespace UI.Controls
         public event EventHandler CardClicked;
         public event EventHandler EditClicked;
         private bool _editRecentlyClicked = false;
+        public event EventHandler DeleteClicked;
+        private Label deleteLabel;
+
         public SuspectCard()
         {
             InitializeComponent();
@@ -20,7 +23,42 @@ namespace UI.Controls
 
             // editLabel.Click += (s, e) => EditClicked?.Invoke(this, EventArgs.Empty);
             editLabel.Click -= OnEditClicked; 
-            editLabel.Click += OnEditClicked; 
+            editLabel.Click += OnEditClicked;
+            deleteLabel = new Label
+            {
+                Text = "🗑",  // Trash icon
+                AutoSize = true,
+                Font = new Font("Segoe UI", 10),
+                Location = new Point(5, 5), // Top-left corner
+                Cursor = Cursors.Hand,
+                ForeColor = Color.DarkRed,
+                BackColor = Color.Transparent
+            };
+            deleteLabel.Click += OnDeleteClicked;
+
+            this.Controls.Add(deleteLabel);
+            deleteLabel.BringToFront();
+
+        }
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (editLabel != null)
+                editLabel.Location = new Point(this.Width - 22, 5);
+        }
+        private void OnDeleteClicked(object sender, EventArgs e)
+        {
+            DeleteClicked?.Invoke(this, EventArgs.Empty);
+        }
+        public void ClearDeleteClickHandlers()
+        {
+            if (DeleteClicked != null)
+            {
+                foreach (Delegate d in DeleteClicked.GetInvocationList())
+                {
+                    DeleteClicked -= (EventHandler)d;
+                }
+            }
         }
         private void OnEditClicked(object sender, EventArgs e)
         {
@@ -66,7 +104,7 @@ namespace UI.Controls
         }
         private void OnCardClicked(object sender, EventArgs e)
         {
-            // Only fire if it�s not the edit label
+            // Only fire if it’s not the edit label
             if (sender != editLabel)
                 CardClicked?.Invoke(this, EventArgs.Empty);
         }
