@@ -1299,7 +1299,7 @@ namespace UI
                         }
                         frameCount++;
                     }
-                    await Task.Delay(1000); // wait for 1 second
+                    //await Task.Delay(1000); // wait for 1 second
                 }
 
                 capture.Release();
