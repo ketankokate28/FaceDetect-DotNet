@@ -30,26 +30,39 @@ namespace SuspectManager.Forms
 
             for (int i = 0; i < Suspect.Images.Length; i++)
             {
-                var base64 = Suspect.Images[i];
-                if (!string.IsNullOrWhiteSpace(base64))
+                var filePath = Suspect.Images[i];
+                if (!string.IsNullOrWhiteSpace(filePath) && File.Exists(filePath))
                 {
                     while (imageBase64s.Count <= i) imageBase64s.Add("");
-                    imageBase64s[i] = base64;
 
                     try
                     {
-                        var imageBytes = Convert.FromBase64String(base64);
+                        byte[] imageBytes = File.ReadAllBytes(filePath);
+
+                        // save base64 back (optional, if you still need it elsewhere)
+                        string base64 = Convert.ToBase64String(imageBytes);
+                        imageBase64s[i] = base64;
+
                         using var ms = new MemoryStream(imageBytes);
                         picImages[i].Image = Image.FromStream(ms);
                         btnRemove[i].Visible = true;
                     }
                     catch (Exception ex)
                     {
-                        MessageBox.Show($"Error loading image: {ex.Message}");
+                        MessageBox.Show($"Error loading image from file: {filePath}\n{ex.Message}");
                     }
+                }
+                else
+                {
+                    // If file not present, optionally clear UI
+                    if (i < picImages.Length) picImages[i].Image = null;
+                    if (i < btnRemove.Length) btnRemove[i].Visible = false;
+
+                    if (imageBase64s.Count > i) imageBase64s[i] = "";
                 }
             }
         }
+
 
         private void BrowseImage_Click(object sender, EventArgs e)
         {

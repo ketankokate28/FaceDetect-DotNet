@@ -96,21 +96,23 @@ namespace UI
             {
                 string fullName = $"{s.FirstName} {s.LastName}".Trim();
 
-                // Pick the first non-empty base64 image
-                string firstBase64 = s.Images.FirstOrDefault(b64 => !string.IsNullOrWhiteSpace(b64));
                 Image img = null;
 
-                if (!string.IsNullOrWhiteSpace(firstBase64))
+                // Pick the first valid file path
+                string firstPath = s.Images.FirstOrDefault(path =>
+                    !string.IsNullOrWhiteSpace(path) && File.Exists(path));
+
+                if (!string.IsNullOrWhiteSpace(firstPath) && File.Exists(firstPath))
                 {
                     try
                     {
-                        byte[] imageBytes = Convert.FromBase64String(firstBase64);
+                        byte[] imageBytes = File.ReadAllBytes(firstPath);
                         using var ms = new System.IO.MemoryStream(imageBytes);
                         img = Image.FromStream(ms);
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"Base64 image decode failed for suspect ID {s.SuspectId}: {ex.Message}");
+                        Console.WriteLine($"Failed to load image from file for suspect ID {s.SuspectId}: {ex.Message}");
                     }
                 }
 
@@ -435,13 +437,18 @@ namespace UI
 
             try
             {
-                var b64 = matchedLogs[currentMatchImageIndex].FrameBase64;
+                string framePath = matchedLogs[currentMatchImageIndex].FrameBase64; // now holds file path
                 UpdateMatchedFrameDetails(matchedLogs[currentMatchImageIndex]);
-                byte[] imageBytes = Convert.FromBase64String(b64);
-                using var ms = new System.IO.MemoryStream(imageBytes);
 
                 matchImageViewer?.Image?.Dispose();
-                matchImageViewer.Image = new Bitmap(Image.FromStream(ms));
+                matchImageViewer.Image = null;
+
+                if (!string.IsNullOrWhiteSpace(framePath) && File.Exists(framePath))
+                {
+                    byte[] imageBytes = File.ReadAllBytes(framePath);
+                    using var ms = new System.IO.MemoryStream(imageBytes);
+                    matchImageViewer.Image = new Bitmap(Image.FromStream(ms));
+                }
             }
             catch
             {
@@ -463,6 +470,7 @@ namespace UI
             lblImageCounter?.Refresh();
             this.PerformLayout();
         }
+
 
         private void AddTopBarWithButtons(Control parent, dynamic suspect, string genderDisplay, int padding)
         {
@@ -930,16 +938,14 @@ namespace UI
             picMainImage.Image = null;
             bool isFirstImage = true; // flag to auto-load first image
 
-            foreach (string b64 in suspect.Images)
+            foreach (string path in suspect.Images)
             {
-                if (!string.IsNullOrWhiteSpace(b64))
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
                 {
                     try
                     {
-                        byte[] imgBytes = Convert.FromBase64String(b64);
-                        using var ms = new System.IO.MemoryStream(imgBytes);
-                        var image = Image.FromStream(ms);
-                        image = new Bitmap(image);
+                        var image = Image.FromFile(path);
+                        image = new Bitmap(image);  // ensure it is not locked
 
                         var pic = new PictureBox
                         {
@@ -967,15 +973,16 @@ namespace UI
                             isFirstImage = false;
                         }
                     }
-                    catch
+                    catch (Exception ex)
                     {
-                        // log or ignore invalid base64 images
+                        Console.WriteLine($"Failed to load image from {path}: {ex.Message}");
                     }
                 }
             }
 
             parent.Controls.Add(imageScroll);
         }
+
         private void StyleActionButton(Button btn, Color bgColor, Color textColor, Color hoverColor, Color borderColor)
         {
             btn.FlatStyle = FlatStyle.Flat;

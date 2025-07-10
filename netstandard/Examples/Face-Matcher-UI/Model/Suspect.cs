@@ -20,26 +20,24 @@ namespace Model
         {
             var result = new List<Image>();
 
-            foreach (var base64 in Images)
+            foreach (var path in Images)
             {
-                if (string.IsNullOrWhiteSpace(base64))
+                if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                     continue;
 
                 try
                 {
-                    byte[] bytes = Convert.FromBase64String(base64);
-                    using var ms = new MemoryStream(bytes);
-                    var img = Image.FromStream(ms);  // Note: Image.FromStream makes a lazy-loading image
-                    result.Add(new Bitmap(img));     // We clone to ensure it's usable after stream closes
+                    result.Add(new Bitmap(Image.FromFile(path)));
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Image conversion error: {ex.Message}");
+                    Console.WriteLine($"Error loading image from path {path}: {ex.Message}");
                 }
             }
 
             return result;
         }
+
         public static Suspect FromReader(SQLiteDataReader reader)
         {
             var s = new Suspect

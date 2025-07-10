@@ -109,10 +109,10 @@ namespace Face_Matcher_UI
 
                 try
                 {
-                    byte[] imageBytes = Convert.FromBase64String(log.FrameBase64);
-                    using var stream = new MemoryStream(Convert.FromBase64String(log.FrameBase64));
-                    stream.Position = 0;
-                    gfx.DrawImage(XImage.FromStream(stream), margin, 180, 300, 200);
+                    if (!string.IsNullOrWhiteSpace(log.FrameBase64) && File.Exists(log.FrameBase64))
+                    {
+                        gfx.DrawImage(XImage.FromFile(log.FrameBase64), margin, 180, 300, 200);
+                    }
                 }
                 catch (Exception ex)
                 {
