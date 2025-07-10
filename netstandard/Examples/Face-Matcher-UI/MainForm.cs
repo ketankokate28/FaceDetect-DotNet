@@ -88,6 +88,7 @@ namespace UI
             LoadSuspectCards();
             ShowMatchImage(0); // This initializes the image view, label, buttons etc. correctly
         }
+
         private void LoadSuspectCards()
         {
             var dbSuspects = DbHelper.GetAllSuspects();
@@ -142,9 +143,11 @@ namespace UI
                 card.SetData(s.Name, s.Img);
 
                 int capturedId = s.Id; // capture loop variable safely
-                if(firstCardId <=0)
+                if(firstCardId <=0 && _selectedSuspectId <=0)
                 {
+                   // _selectedSuspectId = capturedId;
                     firstCardId = capturedId;
+                    _selectedSuspectId = firstCardId;
                 }
                 // Card click opens details
                 card.CardClicked += (sender, e) =>
@@ -222,6 +225,10 @@ namespace UI
                         panelDetails.Controls.Clear();
                         flowLayoutPanelSuspects.Controls.Clear();
                         DbHelper.DeleteSuspect(capturedId);
+                       if(_selectedSuspectId == capturedId)
+                        {
+                            _selectedSuspectId = 0;
+                        }
                         LoadSuspectCards(); // Refresh UI
                     }
                 };
@@ -229,12 +236,12 @@ namespace UI
 
                 flowLayoutPanelSuspects.Controls.Add(card);
             }
-            if (firstCardId >0)
+            if (_selectedSuspectId > 0)
             {              
-                _selectedSuspectId = firstCardId;  // <-- Save globally
+                ///_selectedSuspectId = firstCardId;  // <-- Save globally
                 this.BeginInvoke(new Action(() =>
                 {
-                    ShowSuspectDetails(firstCardId);
+                    ShowSuspectDetails(_selectedSuspectId);
                 }));
             }
 
@@ -1220,7 +1227,8 @@ namespace UI
             var form = new EnrollSuspectForm(); // new suspect
             if (form.ShowDialog() == DialogResult.OK)
             {
-                DbHelper.InsertOrUpdateSuspect(form.Suspect);
+                int suspectId = DbHelper.InsertOrUpdateSuspect(form.Suspect);
+                _selectedSuspectId = suspectId;
                 LoadSuspectCards();
             }
         }
@@ -1327,8 +1335,11 @@ namespace UI
 
                 double fps = capture.Fps > 0 ? capture.Fps : 30;
                 double durationSec = capture.FrameCount / fps;
-                int frameInterval = (int)(fps);  // Read 1 frame per second
 
+
+                //  int frameInterval = (int)(fps);  // Read 1 frame per second
+                int frameInterval = (int)(fps / 3.0);  // 3 frames per second
+                if (frameInterval <= 0) frameInterval = 1;  // fallback
                 for (int currentFrame = 0; currentFrame < capture.FrameCount; currentFrame += frameInterval)
                 {
                     if (token.IsCancellationRequested)
