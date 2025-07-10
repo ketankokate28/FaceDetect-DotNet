@@ -55,7 +55,10 @@ namespace Face_Matcher_UI
             gfx1.DrawString($"Created At: {suspect.CreatedAt}", new XFont("Roboto", 12), XBrushes.Black, new XPoint(margin, detailsY + 130));
             gfx1.DrawString($"Updated At: {suspect.UpdatedAt}", new XFont("Roboto", 12), XBrushes.Black, new XPoint(margin, detailsY + 155));
 
-
+            if (AppState.IsTrial)
+            {
+                DrawWatermark(gfx1, page1);
+            }
             // Page 2: Face Images
             if (faceImages.Count > 0)
             {
@@ -91,7 +94,10 @@ namespace Face_Matcher_UI
 
                     x += w + padding;
                 }
-
+                if (faceImages.Count > 0 && AppState.IsTrial)
+                {
+                    DrawWatermark(gfx2, page2);
+                }
             }
 
             // Page 3+: Match Logs
@@ -106,7 +112,10 @@ namespace Face_Matcher_UI
                 gfx.DrawString($"Confidence: {(100 - log.Distance * 100):F2}%", new XFont("Roboto", 12), XBrushes.Black, new XPoint(margin, 95));
                 gfx.DrawString($"Filename: {log.Filename}", new XFont("Roboto", 12), XBrushes.Black, new XPoint(margin, 120));
                 gfx.DrawString($"Frame Time: {log.Frametime}", new XFont("Roboto", 12), XBrushes.Black, new XPoint(margin, 145));
-
+                if (AppState.IsTrial)
+                {
+                    DrawWatermark(gfx, page);
+                }
                 try
                 {
                     if (!string.IsNullOrWhiteSpace(log.FrameBase64) && File.Exists(log.FrameBase64))
@@ -126,12 +135,27 @@ namespace Face_Matcher_UI
                 Filter = "PDF Files (*.pdf)|*.pdf",
                 FileName = $"Suspect_Report_{suspect.FirstName}_{DateTime.Now:yyyyMMddHHmmss}.pdf"
             };
-
+            
             if (saveDialog.ShowDialog() == DialogResult.OK)
             {
                 doc.Save(saveDialog.FileName);
                 Process.Start("explorer.exe", saveDialog.FileName);
             }
+        }
+        private static void DrawWatermark(XGraphics gfx, PdfPage page)
+        {
+            var font = new XFont("Roboto", 48);
+            var brush = new XSolidBrush(XColor.FromArgb(128, 200, 200, 200)); // semi-transparent light gray
+
+            string text = "Demonstration Purpose Only";
+
+            var size = gfx.MeasureString(text, font);
+
+            gfx.TranslateTransform(page.Width / 2, page.Height / 2);
+            gfx.RotateTransform(-45);
+            gfx.DrawString(text, font, brush, -size.Width / 2, -size.Height / 2);
+            gfx.RotateTransform(45);
+            gfx.TranslateTransform(-page.Width / 2, -page.Height / 2);
         }
     }
 }

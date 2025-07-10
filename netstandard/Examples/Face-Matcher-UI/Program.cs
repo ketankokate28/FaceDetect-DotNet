@@ -86,4 +86,8 @@ namespace Face_Matcher_UI
         }
 
     }
+    public static class AppState
+    {
+        public static bool IsTrial { get; set; } = false;
+    }
 }

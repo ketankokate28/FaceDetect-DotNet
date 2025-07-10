@@ -74,7 +74,7 @@ namespace UI
             doc = XDocument.Load("appsettings.xml");
            
             panelDetails.Controls.Clear();
-            LoadSuspectCards();
+           // LoadSuspectCards();
             splitContainer.SplitterDistance = splitContainer.SplitterDistance + 1;
             splitContainer.SplitterDistance = splitContainer.SplitterDistance - 1;
             splitContainer.BorderStyle = BorderStyle.Fixed3D;
@@ -85,6 +85,7 @@ namespace UI
 
         private void SuspectListControl_Load(object sender, EventArgs e)
         {
+            LoadSuspectCards();
             ShowMatchImage(0); // This initializes the image view, label, buttons etc. correctly
         }
         private void LoadSuspectCards()
@@ -108,7 +109,8 @@ namespace UI
                     {
                         byte[] imageBytes = File.ReadAllBytes(firstPath);
                         using var ms = new System.IO.MemoryStream(imageBytes);
-                        img = Image.FromStream(ms);
+                        using var tempImg = Image.FromStream(ms);
+                        img = new Bitmap(tempImg);
                     }
                     catch (Exception ex)
                     {
@@ -130,7 +132,7 @@ namespace UI
         private void DisplaySuspects(List<(int Id, string Name, Image Img)> suspects)
         {
             flowLayoutPanelSuspects.Controls.Clear();
-
+            int firstCardId = 0;
             foreach (var s in suspects)
             {
                 var card = new SuspectCard();
@@ -140,7 +142,10 @@ namespace UI
                 card.SetData(s.Name, s.Img);
 
                 int capturedId = s.Id; // capture loop variable safely
-
+                if(firstCardId <=0)
+                {
+                    firstCardId = capturedId;
+                }
                 // Card click opens details
                 card.CardClicked += (sender, e) =>
                 {
@@ -203,6 +208,19 @@ namespace UI
                     var confirm = MessageBox.Show("Are you sure you want to delete this suspect and all their matched data?", "Confirm Delete", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2);
                     if (confirm == DialogResult.Yes)
                     {
+                        if (matchImageViewer?.Image != null)
+                        {
+                            matchImageViewer.Image.Dispose();
+                            matchImageViewer.Image = null;
+                        }
+                        if (matchUpdateTimer != null)
+                        {
+                            matchUpdateTimer.Stop();
+                            matchUpdateTimer.Dispose();
+                            matchUpdateTimer = null;
+                        }
+                        panelDetails.Controls.Clear();
+                        flowLayoutPanelSuspects.Controls.Clear();
                         DbHelper.DeleteSuspect(capturedId);
                         LoadSuspectCards(); // Refresh UI
                     }
@@ -211,6 +229,15 @@ namespace UI
 
                 flowLayoutPanelSuspects.Controls.Add(card);
             }
+            if (firstCardId >0)
+            {              
+                _selectedSuspectId = firstCardId;  // <-- Save globally
+                this.BeginInvoke(new Action(() =>
+                {
+                    ShowSuspectDetails(firstCardId);
+                }));
+            }
+
         }
 
         private void ShowSuspectDetails(int suspectId)
@@ -447,6 +474,7 @@ namespace UI
                 {
                     byte[] imageBytes = File.ReadAllBytes(framePath);
                     using var ms = new System.IO.MemoryStream(imageBytes);
+                    using var tempImg = Image.FromStream(ms);
                     matchImageViewer.Image = new Bitmap(Image.FromStream(ms));
                 }
             }
@@ -691,7 +719,14 @@ namespace UI
                     var elapsed = DateTime.Now - searchStartTime;
                     dotCount = (dotCount + 1) % 4;
                     string dots = new string('.', dotCount);
-                    loaderTextLabel.Text = $"🔍 Searching{dots}  ({elapsed.Minutes:D2}:{elapsed.Seconds:D2})";
+
+                    int hours = (int)elapsed.TotalHours;
+                    int minutes = elapsed.Minutes;
+                    int seconds = elapsed.Seconds;
+
+                    loaderTextLabel.Text = $"🔍 Searching{dots}  ({hours:D2}:{minutes:D2}:{seconds:D2})";
+
+                    //loaderTextLabel.Text = $"🔍 Searching{dots}  ({elapsed.Minutes:D2}:{elapsed.Seconds:D2})";
                 };
             }
             searchTimer.Start();
@@ -863,12 +898,23 @@ namespace UI
             //    loaderLabel.Visible = false;
 
             searchTimer?.Stop();
-            loaderPanel.Visible = false;
-            loaderTextLabel.Text = "🔍 Searching...";
+            loaderPanel.Visible = true;
+
+            var elapsed = DateTime.Now - searchStartTime;
+
+            int hours = (int)elapsed.TotalHours;
+            int minutes = elapsed.Minutes;
+            int seconds = elapsed.Seconds;
+
+            loaderTextLabel.Text = $"🔍 Searched in ({hours:D2}:{minutes:D2}:{seconds:D2})";
+
+            //loaderTextLabel.Text = $"🔍 Searched in({elapsed.Minutes:D2}:{elapsed.Seconds:D2})";
+
+            //loaderTextLabel.Text = "🔍 Searched in...";
 
 
             // Optional: reset text for next run
-            loaderTextLabel.Text = "Searching...";
+            //loaderTextLabel.Text = "Searching...";
 
             matchUpdateTimer?.Stop();
             matchUpdateTimer?.Dispose();
@@ -927,6 +973,14 @@ namespace UI
 
         private void AddImageThumbnailScroller(Control parent, dynamic suspect, int padding)
         {
+            foreach (Control ctrl in imageScroll.Controls)
+            {
+                if (ctrl is PictureBox pb && pb.Image != null)
+                {
+                    pb.Image.Dispose();
+                    pb.Image = null;
+                }
+            }
             imageScroll.Controls.Clear();
             imageScroll.Location = new Point(padding, 60);  // Below the top panel
             imageScroll.Size = new Size(parent.Width - 2 * padding, 110);
@@ -944,8 +998,14 @@ namespace UI
                 {
                     try
                     {
-                        var image = Image.FromFile(path);
-                        image = new Bitmap(image);  // ensure it is not locked
+                        //var image = Image.FromFile(path);
+                        //image = new Bitmap(image);  // ensure it is not locked
+
+                        Bitmap image;
+                        using (var temp = Image.FromFile(path))
+                        {
+                            image = new Bitmap(temp);
+                        }
 
                         var pic = new PictureBox
                         {

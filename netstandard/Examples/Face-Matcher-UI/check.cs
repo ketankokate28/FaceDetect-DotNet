@@ -34,6 +34,7 @@ namespace Face_Matcher_UI
             if (license.Type == LicenseType.Trial)
             {
                 // Handle trial license differently if needed
+                AppState.IsTrial = true;
                 Console.WriteLine("Running in trial mode");
             }
 
@@ -81,8 +82,12 @@ namespace Face_Matcher_UI
             // Check license type
             if (license.Type == LicenseType.Trial)
             {
-                // Handle trial license differently if needed
+                AppState.IsTrial = true;
                 Console.WriteLine("Running in trial mode");
+            }
+            else
+            {
+                AppState.IsTrial = false;
             }
 
             // Access customer information

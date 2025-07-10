@@ -27,7 +27,10 @@ namespace Model
 
                 try
                 {
-                    result.Add(new Bitmap(Image.FromFile(path)));
+                    using (var temp = Image.FromFile(path))
+                    {
+                        result.Add(new Bitmap(temp));  // clone into independent memory
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -37,6 +40,7 @@ namespace Model
 
             return result;
         }
+
 
         public static Suspect FromReader(SQLiteDataReader reader)
         {
