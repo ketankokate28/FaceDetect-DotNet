@@ -260,7 +260,7 @@
             Controls.Add(panel1);
             Controls.Add(menuStrip1);
             Name = "Form1";
-            Text = "Face Matcher Schedular";
+            Text = "Face Matcher";
             Load += Form1_Load;
             ((System.ComponentModel.ISupportInitialize)pictureBox1).EndInit();
             menuStrip1.ResumeLayout(false);
