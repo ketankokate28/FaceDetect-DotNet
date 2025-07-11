@@ -1,4 +1,5 @@
 using Accord.Statistics;
+using System.Xml.Linq;
 
 namespace Face_Matcher_UI
 {
@@ -81,7 +82,7 @@ namespace Face_Matcher_UI
                 Environment.Exit(0);
                 return;
             }
-
+            AppState.LoadSettingsFromXml("appsettings.xml");
             Application.Run(new Form1());
         }
 
@@ -89,5 +90,45 @@ namespace Face_Matcher_UI
     public static class AppState
     {
         public static bool IsTrial { get; set; } = false;
+        public static bool isAdmin { get; set; } = false;
+        
+        public static string VideoToolPath { get; set; } = "";
+        public static double FrameRate { get; set; } = 1.0;
+
+        public static double StrictHigh { get; set; } = 0.65;
+        public static double StrictMedium { get; set; } = 0.70;
+        public static double StrictLow { get; set; } = 0.75;
+        public static void LoadSettingsFromXml(string filePath)
+        {
+            if (!File.Exists(filePath))
+            {
+                // Create XML with default values
+                var defaultXml = new XDocument(
+                    new XElement("Settings",
+                        new XElement("VideoToolPath", ""),
+                        new XElement("FrameRate", "1.0"),
+                        new XElement("StrictHigh", "0.65"),
+                        new XElement("StrictMedium", "0.70"),
+                        new XElement("StrictLow", "0.75")
+                    )
+                );
+                defaultXml.Save(filePath);
+            }
+
+            // Now load the file
+            var xml = XDocument.Load(filePath);
+            var settings = xml.Element("Settings");
+            if (settings == null)
+                return;
+
+            AppState.VideoToolPath = settings.Element("VideoToolPath")?.Value ?? "";
+            AppState.FrameRate = double.TryParse(settings.Element("FrameRate")?.Value, out double frameRate) ? frameRate : 1.0;
+
+            AppState.StrictHigh = double.TryParse(settings.Element("StrictHigh")?.Value, out double high) ? high : 0.65;
+            AppState.StrictMedium = double.TryParse(settings.Element("StrictMedium")?.Value, out double med) ? med : 0.70;
+            AppState.StrictLow = double.TryParse(settings.Element("StrictLow")?.Value, out double low) ? low : 0.75;
+        }
+
+
     }
 }

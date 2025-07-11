@@ -776,15 +776,19 @@ namespace UI
             switch (selectedStrictness)
             {
                 case "High":
-                    threshold = double.Parse(doc.Root.Element("StrictHigh")?.Value ?? "0.70");
+                    threshold = AppState.StrictHigh > 0 ? AppState.StrictHigh : 0.70;
                     break;
 
                 case "Medium":
-                    threshold = double.Parse(doc.Root.Element("StrictMedium")?.Value ?? "0.70");
+                    threshold = AppState.StrictMedium > 0 ? AppState.StrictMedium : 0.70;
                     break;
 
                 case "Low":
-                    threshold = double.Parse(doc.Root.Element("StrictLow")?.Value ?? "0.70");
+                    threshold = AppState.StrictLow > 0 ? AppState.StrictLow : 0.70;
+                    break;
+
+                default:
+                    threshold = 0.70;
                     break;
             }
 

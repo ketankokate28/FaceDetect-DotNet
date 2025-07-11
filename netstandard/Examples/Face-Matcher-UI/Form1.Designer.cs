@@ -47,6 +47,7 @@
             videoCutterToolStripMenuItem = new ToolStripMenuItem();
             videoMatcherToolStripMenuItem = new ToolStripMenuItem();
             exitToolStripMenuItem = new ToolStripMenuItem();
+
             panel1 = new Panel();
             contentPanel = new Panel();
             homeToolStripMenuItem = new ToolStripMenuItem();
@@ -150,16 +151,28 @@
             label1.Name = "label1";
             label1.Size = new Size(0, 20);
             label1.TabIndex = 15;
+
+            //Setting menuitem
+            settingsToolStripMenuItem = new ToolStripMenuItem();
+            settingsToolStripMenuItem.Name = "settingsToolStripMenuItem";
+            settingsToolStripMenuItem.Size = new Size(76, 24);
+            settingsToolStripMenuItem.Text = "Settings";
+            settingsToolStripMenuItem.Click += settingsToolStripMenuItem_Click;
+
+
+
             // 
             // menuStrip1
             // 
             menuStrip1.ImageScalingSize = new Size(20, 20);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, homeToolStripMenuItem, videoMatcherToolStripMenuItem, videoCutterToolStripMenuItem, exitToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, homeToolStripMenuItem, videoMatcherToolStripMenuItem, videoCutterToolStripMenuItem, settingsToolStripMenuItem, exitToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Size = new Size(1321, 28);
             menuStrip1.TabIndex = 16;
             menuStrip1.Text = "menuStrip1";
+
+
             // 
             // fileToolStripMenuItem
             // 
@@ -282,5 +295,6 @@
         private ToolStripMenuItem videoMatcherToolStripMenuItem;
         private Panel contentPanel;
         private ToolStripMenuItem homeToolStripMenuItem;
+        private ToolStripMenuItem settingsToolStripMenuItem;
     }
 }

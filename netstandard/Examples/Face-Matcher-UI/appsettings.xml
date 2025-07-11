@@ -2,5 +2,6 @@
   <VideoToolPath>Video cutter\SimpleVideoCutter.exe</VideoToolPath>
 	<StrictHigh>0.65</StrictHigh>
 	<StrictMedium>0.70</StrictMedium>
-	<StrictLow>0.05</StrictLow>
+	<StrictLow>0.75</StrictLow>
+	<FrameRate>1.0</FrameRate>
 </Settings>

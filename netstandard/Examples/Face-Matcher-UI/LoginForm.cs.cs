@@ -30,11 +30,13 @@ namespace Face_Matcher_UI
                     if (user == "ketan" && pass == "ketan!@#")
                     {
                         IsAuthenticated = true;
+                        AppState.isAdmin = true;
                         this.Close();
                     }
                 else
                     if (user == "prakash" && pass == "prakash!@#")
                 {
+                    AppState.isAdmin = true;
                     IsAuthenticated = true;
                     this.Close();
                 }
