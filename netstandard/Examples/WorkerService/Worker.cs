@@ -3,6 +3,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileSystemGlobbing;
 using Microsoft.Extensions.Options;
+using Npgsql;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Drawing;
@@ -136,7 +137,7 @@ namespace WorkerService
 
                     var updatedSuspects = new Dictionary<int, (string name, List<byte[]> blobs)>();
 
-                    using (var conn = new SqliteConnection(connStr))
+                    using (var conn = new NpgsqlConnection(connStr))
                     {
                         await conn.OpenAsync(stoppingToken);
                         using var cmd = conn.CreateCommand();

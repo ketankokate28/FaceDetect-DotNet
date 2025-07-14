@@ -17,6 +17,7 @@ using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
+using Npgsql;
 
 namespace WorkerService
 {
@@ -300,7 +301,7 @@ namespace WorkerService
                 TextFont = new Font("Segoe UI", 10, FontStyle.Bold),
                 Transparency = 0
             };
-
+            var processingTasks = new List<Task>();
             foreach (var imageFile in imageFiles)
             {
                 var sw = Stopwatch.StartNew();
@@ -368,6 +369,14 @@ namespace WorkerService
                             graphics.DrawString(bestMatch.Name + " " + Math.Round(similarityPercent) + "%", painter.TextFont, Brushes.White, nameBox.Location);
                             logCallback?.Invoke($"Matched suspect: {bestMatch.Name} with distance {bestMatch.Distance:F3}");
                             matchedAny = true;
+
+                            Bitmap clonedBitmap = (Bitmap)bitmap.Clone(); // Clone for background use
+                                                                          //originalBitmap.Dispose();
+                                                                          // ProcessAndLogMatch(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback);
+
+                            processingTasks.Add(
+                      ProcessAndLogMatchAsync(bestMatch.Name, (float)bestMatch.Distance, imageFile, clonedBitmap, resultDir, tempResultDir, logCallback)
+                );
                         }
                         else
                         {
@@ -377,15 +386,15 @@ namespace WorkerService
 
                     if (matchedAny)
                     {
-                        bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
-                        bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));
-                        File.Delete(imageFile);
+                        //bitmap.Save(Path.Combine(resultDir, Path.GetFileName(imageFile)));
+                        //bitmap.Save(Path.Combine(tempResultDir, Path.GetFileName(imageFile)));
+                        //File.Delete(imageFile);
                     }
                     else
                     {
                         File.Delete(imageFile);
                     }
-
+                    bitmap.Dispose();
                     sw.Stop();
                     logCallback?.Invoke($"Image {Path.GetFileName(imageFile)} processed in {sw.ElapsedMilliseconds} ms");
                 }
@@ -547,7 +556,7 @@ namespace WorkerService
                             bestMatchID = parsedId;
                         }
                     }
-
+                    DateTime frameCaptureTime_DateFormate=DateTime.Now;
                     string fileName = Path.GetFileName(imageFile);
                     int camId = 0;
                     string frameCaptureTime = "";
@@ -571,6 +580,7 @@ namespace WorkerService
                                                        out DateTime parsedDateTime))
                             {
                                 frameCaptureTime = Convert.ToString(parsedDateTime);
+                                frameCaptureTime_DateFormate = parsedDateTime;
                             }
                             else
                             {
@@ -591,7 +601,7 @@ namespace WorkerService
                         camId,
                         bestMatchID,
                         bestMatchName,
-                        bestDistance
+                        bestDistance, frameCaptureTime_DateFormate
                     );
 
                     // logCallback?.Invoke($"Deleted processed file: {Path.GetFileName(imageFile)}");
@@ -743,35 +753,44 @@ namespace WorkerService
 
             return avg;
         }
-        public void InsertMatchFaceLog(string captureTime, string frame, int cctvId, int? suspectId, string suspectName, float distance)
+        public void InsertMatchFaceLog(string captureTime, string framePath, int cctvId, int? suspectId, string suspectName, float distance, DateTime frameCaptureTime_DateFormate)
         {
             string formattedCaptureTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             string formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
-            using (var connection = new SqliteConnection(connectionString))
+
+            byte[] imageBytes = File.ReadAllBytes(framePath);
+            string base64String = Convert.ToBase64String(imageBytes);
+
+
+            // DateTime captureTime1 = DateTime.Now;
+            DateTime createdDate = DateTime.Now;
+
+            using (var connection = new NpgsqlConnection(connectionString))
             {
                 connection.Open();
 
                 using (var command = connection.CreateCommand())
                 {
                     command.CommandText = @"
-                INSERT INTO Matchfacelogs 
-                (capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date)
-                VALUES 
-                (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date);
-            ";
+    INSERT INTO ""Matchfacelogs"" 
+    (capture_time, frame, cctv_id, suspect_id, suspect, distance, created_date,framebase64)
+    VALUES 
+    (@capture_time, @frame, @cctv_id, @suspect_id, @suspect, @distance, @created_date, @framebase64);
+";
 
-                    command.Parameters.AddWithValue("@capture_time", formattedCaptureTime);
-                    command.Parameters.AddWithValue("@frame", frame);
+                    command.Parameters.AddWithValue("@capture_time", frameCaptureTime_DateFormate);
+                    command.Parameters.AddWithValue("@frame", framePath);
                     command.Parameters.AddWithValue("@cctv_id", cctvId);
                     command.Parameters.AddWithValue("@suspect_id", (object?)suspectId ?? DBNull.Value); // nullable FK
                     command.Parameters.AddWithValue("@suspect", suspectName ?? (object)DBNull.Value);
                     command.Parameters.AddWithValue("@distance", distance);
-                    command.Parameters.AddWithValue("@created_date", formattedCreatedDate);
+                    command.Parameters.AddWithValue("@created_date", createdDate);
+                    command.Parameters.AddWithValue("@framebase64", base64String);
                     try
                     {
                         command.ExecuteNonQuery();
                     }
-                    catch (SqliteException ex)
+                    catch (Exception ex)
                     {
                         // Log or rethrow as needed
                         Console.WriteLine($"SQLite error: {ex.Message}");
@@ -786,7 +805,7 @@ namespace WorkerService
 
             try
             {
-                using (var connection = new SqliteConnection(connectionString))
+                using (var connection = new NpgsqlConnection(connectionString))
                 {
                     connection.Open();
 
