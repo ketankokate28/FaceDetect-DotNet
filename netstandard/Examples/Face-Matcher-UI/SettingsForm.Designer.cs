@@ -138,6 +138,29 @@
             this.txtStrictLow.TabIndex = 12;
             this.txtStrictLow.Enabled = false;
 
+            // 
+            // lblExecutionProvided
+            // 
+            this.lblExecutionProvided = new System.Windows.Forms.Label();
+            this.lblExecutionProvided.AutoSize = true;
+            this.lblExecutionProvided.Location = new System.Drawing.Point(12, 130);
+            this.lblExecutionProvided.Name = "lblExecutionProvided";
+            this.lblExecutionProvided.Size = new System.Drawing.Size(137, 20);
+            this.lblExecutionProvided.TabIndex = 13;
+            this.lblExecutionProvided.Text = "Execution Provider:";
+
+            // 
+            // lblExecutionValue
+            // 
+            this.lblExecutionValue = new System.Windows.Forms.Label();
+            this.lblExecutionValue.AutoSize = true;
+            this.lblExecutionValue.Location = new System.Drawing.Point(160, 130);
+            this.lblExecutionValue.Name = "lblExecutionValue";
+            this.lblExecutionValue.Size = new System.Drawing.Size(0, 20);
+            this.lblExecutionValue.TabIndex = 14;
+            this.lblExecutionValue.Text = ""; // This value you set from backend
+
+
             // add to Controls
             this.Controls.Add(this.lblStrictHigh);
             this.Controls.Add(this.txtStrictHigh);
@@ -145,6 +168,8 @@
             this.Controls.Add(this.txtStrictMedium);
             this.Controls.Add(this.lblStrictLow);
             this.Controls.Add(this.txtStrictLow);
+            this.Controls.Add(this.lblExecutionProvided);
+            this.Controls.Add(this.lblExecutionValue);
 
             // 
             // btnOK
@@ -201,5 +226,7 @@
         private System.Windows.Forms.TextBox txtStrictMedium;
         private System.Windows.Forms.Label lblStrictLow;
         private System.Windows.Forms.TextBox txtStrictLow;
+        private System.Windows.Forms.Label lblExecutionProvided;
+        private System.Windows.Forms.Label lblExecutionValue;
     }
 }

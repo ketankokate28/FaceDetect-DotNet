@@ -1,4 +1,5 @@
-﻿using System;
+﻿using FaceONNX;
+using System;
 using System.IO;
 using System.Windows.Forms;
 using System.Xml.Linq;
@@ -11,6 +12,7 @@ namespace Face_Matcher_UI
         {
             InitializeComponent();
             LoadSettings();
+            SetExecutionProvider();
         }
 
         private void LoadSettings()
@@ -133,6 +135,10 @@ namespace Face_Matcher_UI
             txtStrictHigh.Enabled = true;
             txtStrictMedium.Enabled = true;
             txtStrictLow.Enabled = true;
+        }
+        private void SetExecutionProvider()
+        {          
+            lblExecutionValue.Text = ExecutionProviderManager.GetExecutionProvider();
         }
     }
 }

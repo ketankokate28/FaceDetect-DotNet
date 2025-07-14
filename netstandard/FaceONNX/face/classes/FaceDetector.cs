@@ -264,6 +264,7 @@ namespace FaceONNX
         public const string DirectML = "DmlExecutionProvider";
         public const string CPU = "CPUExecutionProvider";
 
+        private static bool isProviderSet = false;
         // This will store the current execution provider type (e.g., "CUDA", "DirectML", or "CPU")
         public static string CurrentExecutionProvider { get; private set; } = CPU;  // Default to "CPU"
 
@@ -274,11 +275,28 @@ namespace FaceONNX
             if (provider == CUDA || provider == DirectML || provider == CPU)
             {
                 CurrentExecutionProvider = provider;
+                isProviderSet = true;
             }
             else
             {
                 throw new ArgumentException($"Invalid execution provider: {provider}");
             }
+        }
+        public static string GetExecutionProvider()
+        {
+            if (!isProviderSet)
+            {
+                var availableProviders = OrtEnv.Instance().GetAvailableProviders()
+        .Select(p => p.ToLowerInvariant())
+        .ToList();
+                var availableProvidersStr = string.Join(", ", availableProviders);
+                return availableProvidersStr;
+            }
+            else
+            {
+                return CurrentExecutionProvider;
+            }
+
         }
 
         // Optional: You can add more helper methods if needed for more complex logic
