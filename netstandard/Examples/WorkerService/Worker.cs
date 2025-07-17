@@ -1,7 +1,8 @@
-using FaceONNX;
+﻿using FaceONNX;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.FileSystemGlobbing;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Npgsql;
 using System.Collections.Concurrent;
@@ -9,6 +10,9 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace WorkerService
 {
@@ -28,6 +32,14 @@ namespace WorkerService
         private readonly object _embeddingLock = new();
         private DateTime _lastLoadedTime = DateTime.MinValue;
         private readonly TaskCompletionSource<bool> _initialLoadCompleted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        public record SuspectMeta(int Id, string Name, DateTime UpdatedAt, List<string> ImageUrls);
+        string lastSyncTimestr = null;
+        public class MetadataResponse
+        {
+            public string last_sync_time { get; set; }
+            public List<SuspectMeta> Suspects { get; set; }
+        }
+
         public Worker(ILogger<Worker> logger, IConfiguration configuration, IOptions<AppPathsOptions> paths,
              IOptions<AppSettingsOptions> appSettings)
         {
@@ -135,58 +147,47 @@ namespace WorkerService
                 {
                     _logger.LogInformation("Reloading suspects from DB...");
 
-                    var updatedSuspects = new Dictionary<int, (string name, List<byte[]> blobs)>();
+                   // var updatedSuspects = new Dictionary<int, (string name, List<byte[]> blobs)>();
 
-                    using (var conn = new NpgsqlConnection(connStr))
+                    var updatedSuspects = new Dictionary<int, (string name, List<string> filePaths)>();
+
+                    var metadata = await FetchSuspectMetadataAsync(_lastLoadedTime, stoppingToken);
+                    if (!metadata.Any())
                     {
-                        await conn.OpenAsync(stoppingToken);
-                        using var cmd = conn.CreateCommand();
-                        cmd.CommandText = @"
-                    SELECT suspect_id, first_name, file_blob1, file_blob2, file_blob3, file_blob4, file_blob5, updated_at
-                    FROM suspects
-                    WHERE updated_at > @lastSync";
-                        cmd.Parameters.AddWithValue("@lastSync", _lastLoadedTime);
-
-                        using var reader = await cmd.ExecuteReaderAsync(stoppingToken);
-                        while (await reader.ReadAsync(stoppingToken))
-                        {
-                            int id = reader.GetInt32(0);
-                            string name = reader.IsDBNull(1) ? "" : reader.GetString(1);
-                            var blobs = new List<byte[]>();
-
-                            for (int i = 2; i <= 6; i++) // image1 to image5
-                            {
-                                if (!reader.IsDBNull(i))
-                                {
-                                    string base64 = reader.GetString(i);
-                                    try
-                                    {
-                                        byte[] blob = Convert.FromBase64String(base64);
-                                        blobs.Add(blob);
-                                    }
-                                    catch (FormatException ex)
-                                    {
-                                        _logger.LogWarning("Invalid Base64 image for suspect {0}, column image{1}: {2}", id, i - 1, ex.Message);
-                                    }
-                                }
-                            }
-
-                            updatedSuspects[id] = (name, blobs);
-
-                            // Track latest update time
-                            var updatedAt = reader.IsDBNull(7) ? DateTime.MinValue : reader.GetDateTime(7);
-                            if (updatedAt > _lastLoadedTime)
-                                _lastLoadedTime = updatedAt;
-                        }
+                        _logger.LogInformation("No updated suspects found.");
+                        await Task.Delay(TimeSpan.FromMinutes(_appSettings.SuspectReloadIntervalMinutes), stoppingToken);
+                        continue;
                     }
 
+                    // queue missing files
+                    var downloadQueue = new ConcurrentQueue<int>();
+                    PrepareDownloadQueue(metadata, downloadQueue);
+
+                    // start downloader
+                    var downloader = Task.Run(() => DownloadWorkerAsync(downloadQueue, stoppingToken));
+
+                    // wait for downloads
+                    while (!downloadQueue.IsEmpty)
+                    {
+                        await Task.Delay(500, stoppingToken);
+                    }
+
+                    // build updated suspects for embedding
+                    foreach (var s in metadata)
+                    {
+                        var suspectFolder = Path.Combine(_paths.SuspectDir, s.Id.ToString());
+                        var files = Directory.GetFiles(suspectFolder).ToList();
+
+                        updatedSuspects[s.Id] = (s.Name, files);
+                        if (s.UpdatedAt > _lastLoadedTime)
+                            _lastLoadedTime = s.UpdatedAt;
+                    }
                     if (updatedSuspects.Count > 0)
                     {
                         var matcher = new FaceMatcher(_configuration, _appSettings);
                         var newEmbeddings = await Task.Run(() =>
-                            matcher.PrecomputeSuspectEmbeddingsFromBlobs(updatedSuspects, msg => _logger.LogInformation(msg)));
+                            matcher.PrecomputeSuspectEmbeddingsFromFiles(updatedSuspects, msg => _logger.LogInformation(msg)));
 
-                        // Replace or update suspect embeddings
                         lock (_embeddingLock)
                         {
                             if (cachedSuspectEmbeddings == null)
@@ -194,13 +195,13 @@ namespace WorkerService
 
                             foreach (var key in newEmbeddings.Keys)
                             {
-                                // Remove any existing embeddings for same suspect_id
                                 string prefix = key.Split('-')[0] + "-";
                                 foreach (var oldKey in cachedSuspectEmbeddings.Keys.Where(k => k.StartsWith(prefix)).ToList())
                                     cachedSuspectEmbeddings.Remove(oldKey);
 
                                 cachedSuspectEmbeddings[key] = newEmbeddings[key];
                             }
+
                             EnqueueSuspect(cachedSuspectEmbeddings);
                         }
 
@@ -210,6 +211,7 @@ namespace WorkerService
                             _initialLoadCompleted.SetResult(true);
                         }
                     }
+
                 }
                 catch (Exception ex)
                 {
@@ -357,6 +359,143 @@ namespace WorkerService
                 {
                     break; // service is shutting down
                 }
+            }
+        }
+        private async Task<List<SuspectMeta>> FetchSuspectMetadataAsync(DateTime? lastSyncTime, CancellationToken token)
+        {
+            string apiUrl = _appSettings.APIURL;
+            string fullUrl = apiUrl + "/suspect/metadata";
+
+            if (lastSyncTimestr!= null)
+            {
+                var query = $"?lastSync={lastSyncTimestr}";
+                fullUrl += query;
+            }   
+
+            using var client = new HttpClient();
+            var response = await client.GetAsync(fullUrl, token);
+
+            response.EnsureSuccessStatusCode();
+
+            var json = await response.Content.ReadAsStringAsync(token);
+            //var result = System.Text.Json.JsonSerializer.Deserialize<List<SuspectMeta>>(json);
+            var options = new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            };
+
+            var result = JsonSerializer.Deserialize<MetadataResponse>(json, options);
+            lastSyncTimestr = result.last_sync_time;
+            return result.Suspects ?? new List<SuspectMeta>();
+        }
+
+        private void PrepareDownloadQueue(List<SuspectMeta> updatedSuspects, ConcurrentQueue<int> queue)
+        {
+            foreach (var suspect in updatedSuspects)
+            {
+                string suspectFolder = Path.Combine(_paths.SuspectDir, suspect.Id.ToString());
+                bool needsUpdate = false;
+
+                foreach (var url in suspect.ImageUrls)
+                {
+                    var fileName = Path.GetFileName(url);
+                    var localPath = Path.Combine(suspectFolder, fileName);
+
+                    if (!File.Exists(localPath))
+                    {
+                        needsUpdate = true;
+                        break;
+                    }
+                }
+
+                if (needsUpdate)
+                {
+                    queue.Enqueue(suspect.Id);
+                }
+            }
+        }
+
+        private async Task DownloadWorkerAsync(ConcurrentQueue<int> queue, CancellationToken token)
+        {
+            using var client = new HttpClient();
+
+            var apiUrl = _appSettings.APIURL.TrimEnd('/');
+            var downloadEndpoint = $"{apiUrl}/suspect/images";
+
+            while (!token.IsCancellationRequested)
+            {
+                if (!queue.TryDequeue(out var suspectId))
+                {
+                    await Task.Delay(500, token);
+                    continue;
+                }
+
+                try
+                {
+                    string suspectFolder = Path.Combine(_paths.SuspectDir, suspectId.ToString());
+
+                    // Clean up old folder
+                    if (Directory.Exists(suspectFolder))
+                        Directory.Delete(suspectFolder, recursive: true);
+
+                    Directory.CreateDirectory(suspectFolder);
+
+                    var requestBody = new { suspect_id = suspectId };
+
+                    var jsonContent = new StringContent(
+                        System.Text.Json.JsonSerializer.Serialize(requestBody),
+                        Encoding.UTF8,
+                        "application/json"
+                    );
+
+                    var response = await client.PostAsync(downloadEndpoint, jsonContent, token);
+                    response.EnsureSuccessStatusCode();
+
+                    var responseJson = await response.Content.ReadAsStringAsync(token);
+                    var result = System.Text.Json.JsonSerializer.Deserialize<DownloadResponse>(responseJson);
+
+                    if (result?.Images != null)
+                    {
+                        foreach (var image in result.Images)
+                        {
+                            if (string.IsNullOrEmpty(image.Base64) || string.IsNullOrEmpty(image.ImagePath))
+                                continue;
+
+                            var fileName = Path.GetFileName(image.ImagePath);
+                            var localPath = Path.Combine(suspectFolder, fileName);
+
+                            var imageBytes = Convert.FromBase64String(image.Base64);
+                            await File.WriteAllBytesAsync(localPath, imageBytes, token);
+
+                            _logger.LogInformation($"Downloaded {image.ImagePath} → {localPath}");
+                        }
+                    }
+                    else
+                    {
+                        _logger.LogWarning($"No images returned for suspect {suspectId}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, $"Failed to download images for suspect {suspectId}");
+                }
+            }
+        }
+
+
+        // Define a helper DTO
+        public class DownloadResponse
+        {
+            [JsonPropertyName("images")]
+            public List<ImageResult> Images { get; set; }
+
+            public class ImageResult
+            {
+                [JsonPropertyName("image_path")]
+                public string ImagePath { get; set; }
+
+                [JsonPropertyName("base64")]
+                public string Base64 { get; set; }
             }
         }
 

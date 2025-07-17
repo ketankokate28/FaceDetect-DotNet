@@ -10,5 +10,7 @@ namespace WorkerService
     {
         public int SuspectReloadIntervalMinutes { get; set; } = 2;
         public double MatchThreshold { get; set; } = 0.70;
+
+        public string APIURL { get; set; } = null;
     }
 }

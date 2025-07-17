@@ -18,6 +18,9 @@ using System.Drawing.Imaging;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Npgsql;
+using System.Net.Http.Headers;
+using System.Text;
+using Newtonsoft.Json;
 
 namespace WorkerService
 {
@@ -36,6 +39,76 @@ namespace WorkerService
             _appSettings = appSettings;
             MatchThreshold = _appSettings.MatchThreshold;
         }
+
+        public Dictionary<string, float[]> PrecomputeSuspectEmbeddingsFromFiles(
+    Dictionary<int, (string name, List<string> filePaths)> suspects,
+    Action<string> log)
+        {
+            using var faceDetector = new FaceDetector();
+            using var faceEmbedder = new FaceEmbedder();
+
+            var result = new Dictionary<string, float[]>();
+
+            foreach (var kvp in suspects)
+            {
+                int suspectId = kvp.Key;
+                string name = kvp.Value.name;
+                var files = kvp.Value.filePaths;
+                var embeddings = new List<float[]>();
+
+                foreach (var path in files)
+                {
+                    try
+                    {
+                        using var image = LoadBitmapUnlocked(path);
+                        var faces = faceDetector.Forward(image);
+                        if (faces.Length == 0) continue;
+
+                        using var cropped = CropFace(image, faces[0].Box);
+                        var augmentations = GenerateAugmentations(cropped);
+
+                        var imageEmbeddings = new ConcurrentBag<float[]>();
+                        Parallel.ForEach(augmentations, img =>
+                        {
+                            try
+                            {
+                                using (img)
+                                {
+                                    var emb = faceEmbedder.Forward(img);
+                                    imageEmbeddings.Add(emb);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Console.WriteLine($"Embedding failed: {ex.Message}");
+                            }
+                        });
+
+                        embeddings.AddRange(imageEmbeddings);
+                        log?.Invoke($"Processed file {path} for suspect {suspectId}");
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"File read failed: {ex.Message}");
+                    }
+                }
+
+                if (embeddings.Count > 0)
+                {
+                    string key = $"{suspectId}-{name}";
+                    result[key] = AverageEmbedding(embeddings);
+                    log?.Invoke($"Finished embeddings for {key} with {embeddings.Count} vectors.");
+                }
+                else
+                {
+                    log?.Invoke($"No faces found for suspect {suspectId}, skipping.");
+                }
+            }
+
+            return result;
+        }
+
+
         public Dictionary<string, float[]> PrecomputeSuspectEmbeddingsFromBlobs(Dictionary<int, (string name, List<byte[]> blobs)> suspects, Action<string> log)
         {
             using var faceDetector = new FaceDetector();
@@ -595,7 +668,7 @@ namespace WorkerService
                     _logger.LogInformation($"Face Match found from Camera: {camId} Matcher Name: {bestMatchName} with Distance: {bestDistance} ");
 
                     // Log to database
-                    InsertMatchFaceLog(
+                    InsertMatchFaceLogAsync(
                         frameCaptureTime,
                         Path.Combine(resultDir, Path.GetFileName(imageFile)),
                         camId,
@@ -753,7 +826,55 @@ namespace WorkerService
 
             return avg;
         }
-        public void InsertMatchFaceLog(string captureTime, string framePath, int cctvId, int? suspectId, string suspectName, float distance, DateTime frameCaptureTime_DateFormate)
+        public async Task InsertMatchFaceLogAsync(
+    string captureTime,
+    string framePath,
+    int cctvId,
+    int? suspectId,
+    string suspectName,
+    float distance,
+    DateTime frameCaptureTime_DateFormate)
+        {
+            var formattedCaptureTime = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.ffffff");
+            var formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-ddTHH:mm:ss.ffffff");
+
+            byte[] imageBytes = File.ReadAllBytes(framePath);
+            string base64String = Convert.ToBase64String(imageBytes);
+            string frameFileName = Path.GetFileName(framePath);
+
+            var payload = new
+            {
+                captureTime = frameCaptureTime_DateFormate.ToString("yyyy-MM-ddTHH:mm:ss.ffffff"),
+                frame = frameFileName,
+                cctvId = cctvId,
+                suspectId = suspectId,
+                suspect = suspectName,
+                distance = distance,
+                createdDate = formattedCreatedDate,
+                frameBase64 = base64String
+            };
+
+            string jsonPayload = JsonConvert.SerializeObject(payload);
+
+            using (var client = new HttpClient())
+            {
+               // client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", jwtToken);
+                var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
+                var apiUrl = _appSettings.APIURL.TrimEnd('/');
+                var Endpoint = $"{apiUrl}/matchfacelogs/addmatchfacelogs";
+
+                HttpResponseMessage response = await client.PostAsync(Endpoint, content);
+                if (response.IsSuccessStatusCode)
+                {
+                    Console.WriteLine($"Log inserted via API successfully: {await response.Content.ReadAsStringAsync()}");
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to insert log: {response.StatusCode} - {await response.Content.ReadAsStringAsync()}");
+                }
+            }
+        }
+        public void InsertMatchFaceLog_DB(string captureTime, string framePath, int cctvId, int? suspectId, string suspectName, float distance, DateTime frameCaptureTime_DateFormate)
         {
             string formattedCaptureTime = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
             string formattedCreatedDate = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.ffffff");
