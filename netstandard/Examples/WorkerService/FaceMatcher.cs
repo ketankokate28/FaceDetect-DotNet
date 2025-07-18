@@ -841,7 +841,7 @@ namespace WorkerService
             byte[] imageBytes = File.ReadAllBytes(framePath);
             string base64String = Convert.ToBase64String(imageBytes);
             string frameFileName = Path.GetFileName(framePath);
-
+            int siteId = _appSettings.SiteId;
             var payload = new
             {
                 captureTime = frameCaptureTime_DateFormate.ToString("yyyy-MM-ddTHH:mm:ss.ffffff"),
@@ -851,7 +851,8 @@ namespace WorkerService
                 suspect = suspectName,
                 distance = distance,
                 createdDate = formattedCreatedDate,
-                frameBase64 = base64String
+                frameBase64 = base64String,
+                siteId = siteId
             };
 
             string jsonPayload = JsonConvert.SerializeObject(payload);
@@ -862,7 +863,7 @@ namespace WorkerService
                 var content = new StringContent(jsonPayload, Encoding.UTF8, "application/json");
                 var apiUrl = _appSettings.APIURL.TrimEnd('/');
                 var Endpoint = $"{apiUrl}/matchfacelogs/addmatchfacelogs";
-
+               
                 HttpResponseMessage response = await client.PostAsync(Endpoint, content);
                 if (response.IsSuccessStatusCode)
                 {

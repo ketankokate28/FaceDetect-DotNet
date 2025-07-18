@@ -12,5 +12,6 @@ namespace WorkerService
         public double MatchThreshold { get; set; } = 0.70;
 
         public string APIURL { get; set; } = null;
+        public int SiteId { get; set; } = 0;
     }
 }

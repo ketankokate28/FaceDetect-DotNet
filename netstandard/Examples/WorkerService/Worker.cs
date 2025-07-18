@@ -364,13 +364,18 @@ namespace WorkerService
         private async Task<List<SuspectMeta>> FetchSuspectMetadataAsync(DateTime? lastSyncTime, CancellationToken token)
         {
             string apiUrl = _appSettings.APIURL;
+            int siteId = _appSettings.SiteId;
             string fullUrl = apiUrl + "/suspect/metadata";
 
             if (lastSyncTimestr!= null)
             {
-                var query = $"?lastSync={lastSyncTimestr}";
+                var query = $"?lastSync={lastSyncTimestr}&siteId={siteId}";
                 fullUrl += query;
-            }   
+            }
+            else
+            {
+                fullUrl += $"?siteId={siteId}";
+            }
 
             using var client = new HttpClient();
             var response = await client.GetAsync(fullUrl, token);
